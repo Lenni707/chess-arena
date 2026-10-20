@@ -45,7 +45,6 @@ export interface GameState {
 
 export type ClientMsg =
   | { t: 'engines.refresh' }
-  | { t: 'engines.add'; name: string; command: string; args?: string[] }
   | { t: 'engines.remove'; id: string }
   | { t: 'play.new'; white: PlayerRef; black: PlayerRef; tc: TimeControl }
   | { t: 'play.move'; gameId: string; uci: string }

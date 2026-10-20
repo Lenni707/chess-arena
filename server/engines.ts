@@ -1,4 +1,7 @@
 import fs from 'node:fs/promises';
+import { createWriteStream } from 'node:fs';
+import { pipeline } from 'node:stream/promises';
+import type { Readable } from 'node:stream';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import type { EngineInfo } from '../shared/protocol.js';
@@ -62,11 +65,16 @@ export class EngineRegistry {
     return found;
   }
 
-  async add(name: string, command: string, args: string[] = []) {
-    const config = await this.readConfig();
-    config.push({ name: name || undefined, command, args });
-    await this.writeConfig(config);
-    return this.refresh();
+  /**
+   * Save a file picked in the browser into the engines folder. Files of a
+   * multi-file pick share a subfolder so an engine finds its network files.
+   */
+  async saveUpload(folder: string, name: string, body: Readable) {
+    const dir = folder ? path.join(this.dir, safeName(folder)) : this.dir;
+    await fs.mkdir(dir, { recursive: true });
+    const file = path.join(dir, safeName(name));
+    await pipeline(body, createWriteStream(file));
+    if (!SKIP.test(file)) await fs.chmod(file, 0o755);
   }
 
   async remove(id: string) {
@@ -75,6 +83,10 @@ export class EngineRegistry {
     if (e.source === 'config') {
       const config = await this.readConfig();
       await this.writeConfig(config.filter((c) => idFor(c.command, c.args ?? []) !== id));
+    } else {
+      // Found by scanning: delete the engine file itself (for scripts, the script).
+      const file = path.isAbsolute(e.command) ? e.command : e.args[0];
+      if (file && path.resolve(file).startsWith(this.dir + path.sep)) await fs.rm(file, { force: true });
     }
     return this.refresh();
   }
@@ -144,6 +156,11 @@ export class EngineRegistry {
   private async writeConfig(config: ConfigEntry[]) {
     await fs.writeFile(path.join(this.dir, 'engines.json'), JSON.stringify(config, null, 2) + '\n');
   }
+}
+
+function safeName(name: string) {
+  const base = path.basename(name).replace(/[^\w.+-]/g, '_');
+  return base.replace(/^\.+/, '') || 'engine';
 }
 
 function idFor(command: string, args: string[]) {

@@ -2,35 +2,52 @@ import { h } from '../dom';
 import { on, store } from '../store';
 import { conn } from '../ws';
 
-/** Collapsible list of engines with an "add engine" form. */
+const DATA_FILE = /\.(json|md|txt|nnue|bin|dll|so|dylib|ini|cfg)$/i;
+
+/** Collapsible list of engines; "Add engine" opens the file picker and uploads the pick. */
 export function enginesSection(): HTMLElement {
   const list = h('ul.engine-list');
-  const name = h('input', { placeholder: 'Name (optional)', 'aria-label': 'Engine name' });
-  const cmd = h('input', { placeholder: 'Path, e.g. /engines/myengine', 'aria-label': 'Engine path or command' });
-  const form = h(
-    'form.engine-add',
-    {
-      onsubmit: (e: Event) => {
-        e.preventDefault();
-        const parts = cmd.value.trim().split(/\s+/);
-        if (!parts[0]) return cmd.focus();
-        conn.send({ t: 'engines.add', name: name.value, command: parts[0], args: parts.slice(1) });
-        name.value = cmd.value = '';
-      },
-    },
-    cmd,
-    name,
-    h('button.btn.ghost', { type: 'submit' }, 'Add engine'),
-  );
+  const status = h('p.upload-status', { role: 'status' });
+  const picker = h('input', { type: 'file', multiple: true, hidden: true, 'aria-label': 'Engine file' });
+  const addBtn = h('button.btn.ghost.add-engine', { type: 'button', onclick: () => picker.click() }, 'Add engine');
+  picker.addEventListener('change', async () => {
+    const files = [...(picker.files ?? [])];
+    picker.value = '';
+    if (!files.length) return;
+    // Several files (engine + network files) go into one folder named after the engine.
+    const main = files.find((f) => !DATA_FILE.test(f.name)) ?? files[0];
+    const folder = files.length > 1 ? main.name.replace(/\.[^.]*$/, '') : '';
+    addBtn.disabled = true;
+    try {
+      for (const f of files) {
+        status.textContent = `Adding ${f.name} (${(f.size / 1e6).toFixed(1)} MB)…`;
+        const q = new URLSearchParams({ name: f.name, folder });
+        const res = await fetch(`/api/engines/upload?${q}`, { method: 'POST', body: f });
+        if (!res.ok) throw new Error(await res.text());
+      }
+      status.textContent = '';
+      conn.send({ t: 'engines.refresh' });
+    } catch (err) {
+      status.textContent = `Couldn't add ${main.name}: ${(err as Error).message}`;
+    } finally {
+      addBtn.disabled = false;
+    }
+  });
+
   const count = h('span.count');
   const details = h(
     'details.engines',
     {},
     h('summary', {}, 'Engines', count),
     list,
-    form,
+    h('div.engine-add', {}, addBtn, picker, status),
     h('button.link-btn', { type: 'button', onclick: () => conn.send({ t: 'engines.refresh' }) }, 'Rescan engines folder'),
   );
+
+  const remove = (id: string, name: string, source: string) => {
+    if (source === 'auto' && !confirm(`Delete ${name} from the engines folder?`)) return;
+    conn.send({ t: 'engines.remove', id });
+  };
 
   const render = () => {
     count.textContent = String(store.engines.length);
@@ -43,12 +60,10 @@ export function enginesSection(): HTMLElement {
               h('span.status-dot'),
               h('span.e-name', {}, e.name),
               e.status === 'error' ? h('span.e-err', {}, e.error ?? 'failed') : null,
-              e.source === 'config'
-                ? h('button.x', { 'aria-label': `Remove ${e.name}`, onclick: () => conn.send({ t: 'engines.remove', id: e.id }) }, '×')
-                : null,
+              h('button.x', { 'aria-label': `Remove ${e.name}`, title: 'Remove', onclick: () => remove(e.id, e.name, e.source) }, '×'),
             ),
           )
-        : [h('li.empty', {}, 'No engines yet. Put UCI engines in the engines folder, or add one by path below.')]),
+        : [h('li.empty', {}, 'No engines yet. Click Add engine and pick your engine file.')]),
     );
     if (!store.engines.some((e) => e.status === 'ok')) details.open = true;
   };

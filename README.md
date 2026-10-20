@@ -15,7 +15,7 @@ Without Docker (Node 22+): `npm install`, then `npm run dev` and open http://loc
 
 ## Add your engines
 
-Put your UCI engines in the `engines/` folder. They're picked up on start, or when you click **Rescan engines folder**. You can also add one by path in the **Engines** section.
+Click **Add engine** and pick the engine file in your file manager. It's copied into the `engines/` folder. To include network files (NNUE etc.), select them together with the engine. You can also drop engines into `engines/` yourself and click **Rescan engines folder**.
 
 - Executables, `*.py` and `*.js` files (top level or one folder deep) are found automatically. The engine runs with its own folder as the working directory, so NNUE files next to it load.
 - **Docker runs Linux.** A macOS or Windows binary won't run in the container, and the engines list says so. Use a Linux build (arm64 on Apple Silicon), or run with `npm run dev` to use native macOS builds.
@@ -42,6 +42,6 @@ npm test           # vitest: UCI wrapper and game rules against a test-only rand
 npm run typecheck
 ```
 
-Engine-vs-engine matches and the 100+ board grid are planned in [ROADMAP.md](ROADMAP.md).
+Everything (built and planned, including engine-vs-engine matches and the 100+ board grid) is in [PLAN.md](PLAN.md).
 
 Piece set: cburnett by Colin M.L. Burnett (GPLv2+), from lichess.

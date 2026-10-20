@@ -146,8 +146,7 @@ main {
 
 
 select,
-input[type='number'],
-.engine-add input {
+input[type='number'] {
   width: 100%;
   background: var(--surface-2);
   border: 1px solid var(--line);
@@ -395,6 +394,16 @@ select {
   flex-direction: column;
   gap: 6px;
   margin-bottom: 10px;
+}
+
+.upload-status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.upload-status:empty {
+  display: none;
 }
 
 /* ---------- play ---------- */

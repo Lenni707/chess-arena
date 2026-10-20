@@ -31,6 +31,15 @@ const MIME: Record<string, string> = {
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', 'http://x');
+  if (req.method === 'POST' && url.pathname === '/api/engines/upload') {
+    try {
+      await registry.saveUpload(url.searchParams.get('folder') ?? '', url.searchParams.get('name') ?? 'engine', req);
+      res.writeHead(204).end();
+    } catch (err) {
+      res.writeHead(500, { 'content-type': 'text/plain' }).end((err as Error).message);
+    }
+    return;
+  }
   let file = path.join(STATIC_DIR, path.normalize(decodeURIComponent(url.pathname)));
   if (!file.startsWith(STATIC_DIR)) return void res.writeHead(403).end();
   const st = await fs.stat(file).catch(() => null);
@@ -75,10 +84,6 @@ async function handle(ws: WebSocket, msg: ClientMsg) {
   switch (msg.t) {
     case 'engines.refresh':
       broadcast({ t: 'engines', engines: await registry.refresh() });
-      break;
-    case 'engines.add':
-      if (!msg.command.trim()) throw new Error('Engine command is empty');
-      broadcast({ t: 'engines', engines: await registry.add(msg.name.trim(), msg.command.trim(), msg.args ?? []) });
       break;
     case 'engines.remove':
       broadcast({ t: 'engines', engines: await registry.remove(msg.id) });
