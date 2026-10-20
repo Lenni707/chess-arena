@@ -1,5 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { createInterface } from 'node:readline';
+import fs from 'node:fs';
 import path from 'node:path';
 
 export interface EngineDef {
@@ -44,6 +45,11 @@ export class UciEngine {
   }
 
   async start(timeoutMs = 10_000): Promise<void> {
+    const wrongOs = foreignBinary(this.def.command);
+    if (wrongOs) {
+      this.fail(wrongOs);
+      throw new EngineError(wrongOs);
+    }
     const cwd = this.def.cwd ?? (path.isAbsolute(this.def.command) ? path.dirname(this.def.command) : undefined);
     const proc = spawn(this.def.command, this.def.args, { cwd, stdio: 'pipe' });
     this.proc = proc;
@@ -173,4 +179,24 @@ function describeSpawnError(err: NodeJS.ErrnoException): string {
   if (err.code === 'ENOEXEC' || /exec format/i.test(err.message))
     return 'wrong binary format — inside Docker engines must be Linux builds';
   return err.message;
+}
+
+/** Explains binaries built for another OS (e.g. a macOS engine inside the Linux container). */
+function foreignBinary(command: string): string | null {
+  if (!path.isAbsolute(command)) return null;
+  let head: Buffer;
+  try {
+    const fd = fs.openSync(command, 'r');
+    head = Buffer.alloc(4);
+    fs.readSync(fd, head, 0, 4, 0);
+    fs.closeSync(fd);
+  } catch {
+    return null;
+  }
+  const magic = head.toString('hex');
+  const macho = ['cffaedfe', 'cefaedfe', 'feedfacf', 'feedface', 'cafebabe'].includes(magic);
+  if (macho && process.platform !== 'darwin') return 'this is a macOS binary; inside Docker the engine needs a Linux build';
+  if (head.subarray(0, 2).toString() === 'MZ' && process.platform !== 'win32') return 'this is a Windows .exe; it needs a Linux build';
+  if (magic === '7f454c46' && process.platform !== 'linux') return 'this is a Linux binary; run the app with Docker or use a native build';
+  return null;
 }

@@ -2,11 +2,8 @@ import { describe, expect, it } from 'vitest';
 import path from 'node:path';
 import { UciEngine } from '../server/uci.js';
 import { EnginePlayer, Game } from '../server/game.js';
-import { Match } from '../server/match.js';
-import type { EngineInfo } from '../shared/protocol.js';
 
 const RANDOM = { command: 'node', args: [path.resolve('tests/fixtures/random-engine.mjs')], options: {} };
-const info = (id: string): EngineInfo => ({ id, name: id, ...RANDOM, source: 'auto', status: 'ok' });
 
 describe('UciEngine', () => {
   it('handshakes and returns a legal move', async () => {
@@ -51,22 +48,4 @@ describe('Game', () => {
     a.quit();
     b.quit();
   }, 10_000);
-});
-
-describe('Match', () => {
-  it('runs all games and tallies them', async () => {
-    const done = new Promise<Match>((resolve) => {
-      const m: Match = new Match(
-        { engineA: info('A'), engineB: info('B'), defA: RANDOM, defB: RANDOM, games: 10, tc: { kind: 'movetime', ms: 5 }, concurrency: 4 },
-        (t) => !t.running && resolve(m),
-        () => {},
-      );
-      m.run();
-    });
-    const m = await done;
-    const t = m.tally;
-    expect(t.done).toBe(10);
-    expect(t.aWins + t.bWins + t.draws).toBe(10);
-    expect(m.boards.every((b) => b.st === 'done' && b.r !== '*')).toBe(true);
-  }, 60_000);
 });

@@ -6,7 +6,6 @@ import { WebSocketServer, WebSocket } from 'ws';
 import type { ClientMsg, PlayerRef, ServerMsg, TimeControl } from '../shared/protocol.js';
 import { EngineRegistry } from './engines.js';
 import { EnginePlayer, Game, HumanPlayer, type Player } from './game.js';
-import { Match } from './match.js';
 import { UciEngine } from './uci.js';
 
 const PORT = Number(process.env.PORT ?? 3000);
@@ -15,10 +14,8 @@ const ENGINES_DIR = path.resolve(process.env.ENGINES_DIR ?? path.join(ROOT, 'eng
 const STATIC_DIR = path.resolve(process.env.STATIC_DIR ?? path.join(ROOT, 'dist/client'));
 
 const registry = new EngineRegistry(ENGINES_DIR);
-const watching = new Map<WebSocket, string | null>();
 
 let play: { game: Game; engines: UciEngine[]; human: HumanPlayer[] } | null = null;
-let match: Match | null = null;
 
 // ---------- static files ----------
 
@@ -60,10 +57,8 @@ function broadcast(msg: ServerMsg) {
 }
 
 wss.on('connection', (ws) => {
-  watching.set(ws, null);
   send(ws, { t: 'hello', cores: os.cpus().length });
   send(ws, { t: 'engines', engines: registry.list() });
-  send(ws, { t: 'match', match: match?.summary() ?? null });
   if (play) send(ws, { t: 'game', game: play.game.state() });
   ws.on('message', (raw) => {
     let msg: ClientMsg;
@@ -74,7 +69,6 @@ wss.on('connection', (ws) => {
     }
     handle(ws, msg).catch((err) => send(ws, { t: 'error', message: (err as Error).message }));
   });
-  ws.on('close', () => watching.delete(ws));
 });
 
 async function handle(ws: WebSocket, msg: ClientMsg) {
@@ -115,25 +109,7 @@ async function handle(ws: WebSocket, msg: ClientMsg) {
       }
       break;
     }
-    case 'match.start':
-      startMatch(msg);
-      break;
-    case 'match.stop':
-      match?.stop();
-      break;
-    case 'watch': {
-      watching.set(ws, msg.gameId);
-      const g = msg.gameId ? findGame(msg.gameId) : null;
-      if (g) send(ws, { t: 'game', game: g.state() });
-      break;
-    }
   }
-}
-
-function findGame(id: string): Game | null {
-  if (play?.game.id === id) return play.game;
-  if (match && id.startsWith(match.id + '-')) return match.games[Number(id.slice(match.id.length + 1))] ?? null;
-  return null;
 }
 
 // ---------- play ----------
@@ -179,34 +155,6 @@ async function startPlay(white: PlayerRef, black: PlayerRef, tc: TimeControl) {
   });
 }
 
-// ---------- match ----------
-
-function startMatch(msg: Extract<ClientMsg, { t: 'match.start' }>) {
-  const a = registry.get(msg.engineA);
-  const b = registry.get(msg.engineB);
-  if (!a || !b) throw new Error('Pick two engines');
-  match?.stop();
-  const games = clamp(Math.round(msg.games), 1, 2000);
-  const concurrency = clamp(Math.round(msg.concurrency), 1, 256);
-  const m = new Match(
-    { engineA: a, engineB: b, defA: registry.def(a), defB: registry.def(b), games, tc: msg.tc, concurrency },
-    (t) => {
-      if (match === m) broadcast({ t: 'match.tick', id: m.id, ...t });
-    },
-    (g) => {
-      const data = JSON.stringify({ t: 'game', game: g.state() } satisfies ServerMsg);
-      for (const [ws, id] of watching) if (id === g.id && ws.readyState === WebSocket.OPEN) ws.send(data);
-    },
-  );
-  match = m;
-  broadcast({ t: 'match', match: m.summary() });
-  m.run().catch((err) => console.error('match failed', err));
-}
-
-function clamp(n: number, lo: number, hi: number) {
-  return Math.min(hi, Math.max(lo, Number.isFinite(n) ? n : lo));
-}
-
 // ---------- boot ----------
 
 await registry.refresh();
@@ -218,7 +166,6 @@ server.listen(PORT, () => {
 for (const sig of ['SIGINT', 'SIGTERM'] as const) {
   process.on(sig, () => {
     stopPlay();
-    match?.stop();
     process.exit(0);
   });
 }

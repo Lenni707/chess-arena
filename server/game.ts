@@ -88,7 +88,6 @@ export class Game {
   readonly uci: string[] = [];
   result: Result = '*';
   reason?: string;
-  bookPlies = 0;
   private clock: { w: number; b: number };
   private turnStart = 0;
   private running: Color | null = null;
@@ -113,12 +112,6 @@ export class Game {
     return this.uci[this.uci.length - 1] ?? '';
   }
 
-  /** Play opening moves before the engines take over. */
-  applyBook(uciMoves: string[]) {
-    for (const m of uciMoves) this.apply(m);
-    this.bookPlies = uciMoves.length;
-  }
-
   state(): GameState {
     const clock = { ...this.clock };
     if (this.running && this.tc.kind === 'clock') clock[this.running] -= Date.now() - this.turnStart;
@@ -128,7 +121,6 @@ export class Game {
       black: { name: this.black.name, ref: this.black.ref },
       startFen: START_FEN,
       moves: this.moves,
-      bookPlies: this.bookPlies,
       fen: this.chess.fen(),
       clock: { ...clock, running: this.running, tc: this.tc },
       result: this.result,
