@@ -1,0 +1,6 @@
+node_modules
+dist
+.DS_Store
+# your engines stay local
+engines/*
+!engines/README.md
