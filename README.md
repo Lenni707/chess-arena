@@ -14,14 +14,28 @@ open http://localhost:3000
 
 Without Docker: `npm install`, then `npm run dev` and open http://localhost:5173. This needs Node 22+, Rust with `rustup target add wasm32-unknown-unknown`, and `cargo install wasm-bindgen-cli --version 0.2.129`.
 
-## Add your engines
+## Add your engines (and their versions)
 
-Click **Add engine** and pick the engine file in your file manager. It's copied into the `engines/` folder. To include network files (NNUE etc.), select them together with the engine. You can also drop engines into `engines/` yourself and click **Rescan engines folder**.
+Click **Add engine** and pick the engine file in your file manager. It's saved as `engines/<engine>/v1/`. To include network files (NNUE etc.), select them together with the engine.
+
+**New versions:** click **+ version** next to an engine and pick the updated file. It's saved as `v2`, `v3`, … next to the old ones, and all versions stay playable. Uploading a file with the same name as an existing engine also adds a new version. You can also make the folders yourself (`engines/<engine>/<version>/`) and click **Rescan engines folder**.
+
+## Engine vs. engine
+
+Open **Match** in the top bar, then pick engine A and engine B. By default, that's the newest version against the one before it. Then choose:
+- the number of games (100 to 10,000)
+- the time per move
+- how many boards play at once (16 to 200)
+
+Every running game is a live mini board. A board flashes the result in A's color (amber), B's color (blue) or grey for a draw, then starts its next game. Colors swap every game. The panel shows A wins / draws / B wins, A's score and the Elo difference with a 95% margin.
+
+Every game starts from the normal starting position. An engine that always plays the same move in the same position plays the same game every time.
 
 - Executables, `*.py` and `*.js` files (top level or one folder deep) are found automatically. The engine runs with its own folder as the working directory, so NNUE files next to it load.
 - **macOS engines with Docker:** the container runs Linux, so native macOS binaries run on your Mac through the **engine host** (`npm run engine-host`). The container connects to it on `host.docker.internal:7100`, and those engines show a `macOS` tag. Linux builds and `*.py`/`*.js` engines run inside the container. To run a script engine on the Mac as well, add `"host": true` to its `engines.json` entry.
 - The engine host only starts files inside `engines/`. It listens on 127.0.0.1 only and requires the token in `engines/.engine-host-token`, which it creates on first start.
 - Click an engine's name to rename it.
+- Each board in a match runs its own two engine processes, so 100 boards means 200 processes.
 - Names, arguments and UCI options go in `engines/engines.json`:
 
 ```json

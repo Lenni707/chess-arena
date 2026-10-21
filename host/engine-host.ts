@@ -102,6 +102,12 @@ const server = net.createServer((sock) => {
   });
 });
 
+server.on('error', (err: NodeJS.ErrnoException) => {
+  if (err.code !== 'EADDRINUSE') throw err;
+  console.error(`Port ${PORT} is already in use: is an engine host already running? (Set ENGINE_HOST_PORT to use another port.)`);
+  process.exit(1);
+});
+
 server.listen(PORT, BIND, () => {
   log(`engine host on ${BIND}:${PORT}, serving ${DIR} (${os.platform()}/${os.arch()})`);
 });

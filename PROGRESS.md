@@ -3,7 +3,7 @@
 Handoff notes for anyone (human or model) continuing this project.
 
 ## Rules
-- The app only plays **you vs. one UCI engine**. Larger features (engine vs engine, matches, the 100-board grid) are in `PLAN.md` (part 2). Don't build them unless asked.
+- Two tabs: **Play** (you vs. one engine) and **Match** (engine A vs. B, many games, live board grid). Keep the scope tight: the user asked explicitly for no opening book, no extra engines and no extras they didn't ask for.
 - Ship no engines. `engines/` is the user's folder and is gitignored. Tests use `tests/fixtures/random-engine.mjs` only.
 - Design: dark slate (`#171b22`), stone/slate board, one amber accent (`#f0b44c`), Manrope. Keep the UI to one screen with no menus.
 - Commit and push after each milestone.
@@ -30,9 +30,12 @@ Handoff notes for anyone (human or model) continuing this project.
 - [x] Rename engines (click the name)
 - [x] Chess rules via shakmaty (WASM), replacing chess.js on server and client
 - [x] Engine host: macOS engines while the app runs in Docker
-- [ ] PLAN.md part 2 (on hold)
+- [x] Engine versions (`engines/<engine>/<version>/`, "+ version" upload, auto-migration to v1)
+- [x] Match tab: 100–10,000 games, up to 200 live canvas boards, tally + Elo
+- [ ] Rest of PLAN.md part 2 (only when asked)
 
 ## Log
 - 2026-10-21: Built the server and the full client, including a match runner and grid. The user then narrowed the scope to "play vs one engine". Match, grid and viewer code was removed and documented in the roadmap (now PLAN.md) (server match code lives in commit fcc4985). Verified in headless Chrome: drag/click moves, illegal drop snaps back, play as Black, resign, mobile layout. Docker build verified, including the macOS-binary error message.
 - 2026-10-21: Add engine now opens the file picker and uploads the file(s) into engines/ (`POST /api/engines/upload`). Removing an engine found by scanning deletes its file. Add-by-path was removed. Roadmap merged into the single PLAN.md. Verified the upload and remove in Docker with headless Chrome.
 - 2026-10-21: Finished engine renaming (click the name; scanned engines get an `engines.json` entry with a portable `./file` command). Replaced chess.js with shakmaty compiled to WASM (`core/`). Added the engine host so macOS binaries run from Docker. Verified in Docker: a macOS arm64 engine played through the host from the container, and in headless Chrome: legal dots, a move, the engine's reply, and renaming.
+- 2026-10-21: Engine versions, plus the Match tab with live mini boards. Verified in Docker with the user's macOS engine: an uploaded v2 moved the old file into v1, and v2 vs v1 ran 1000 games with 100 boards at once in headless Chrome (200 games in ~25 s at 20 ms/move). Stop works. The user rejected an opening book, so it was removed.

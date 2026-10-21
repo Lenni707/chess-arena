@@ -46,43 +46,91 @@ export class EngineRegistry {
     await fs.mkdir(this.dir, { recursive: true });
     const config = await this.readConfig();
     this.hostOnly = new Set(config.filter((c) => c.host).map((c) => this.idOf(c)));
-    const found: EngineInfo[] = config.map((c) => ({
-      id: this.idOf(c),
-      name: c.name ?? path.basename(c.command),
-      command: this.resolve(c.command),
-      args: c.args ?? [],
-      options: c.options ?? {},
-      source: 'config',
-      status: 'unknown',
-    }));
+    const found: EngineInfo[] = config.map((c) => {
+      const command = this.resolve(c.command);
+      const args = c.args ?? [];
+      const e: EngineInfo = { id: this.idOf(c), name: c.name ?? path.basename(c.command), command, args, options: c.options ?? {}, source: 'config', status: 'unknown' };
+      return this.withVersion(e, c.name);
+    });
     const configured = new Set(found.map((e) => e.id));
     for (const cmd of await this.scan()) {
       if (configured.has(idFor(cmd.command, cmd.args))) continue;
-      found.push({
-        id: idFor(cmd.command, cmd.args),
-        name: path.basename(cmd.file).replace(/\.(py|js|mjs|sh)$/, ''),
-        command: cmd.command,
-        args: cmd.args,
-        options: {},
-        source: 'auto',
-        status: 'unknown',
-      });
+      found.push(
+        this.withVersion({
+          id: idFor(cmd.command, cmd.args),
+          name: stem(cmd.file),
+          command: cmd.command,
+          args: cmd.args,
+          options: {},
+          source: 'auto',
+          status: 'unknown',
+        }),
+      );
     }
     await Promise.all(found.map((e) => this.probe(e)));
+    // Families together, newest version first.
+    found.sort((a, b) => (a.family ?? a.name).localeCompare(b.family ?? b.name) || versionNum(b.version) - versionNum(a.version));
     this.engines = found;
     return found;
   }
 
   /**
-   * Save a file picked in the browser into the engines folder. Files of a
-   * multi-file pick share a subfolder so an engine finds its network files.
+   * Save a file picked in the browser as (part of) version `version` of engine
+   * `family`, in `engines/<family>/<version>/`. All files of one pick go into the
+   * same version folder, so an engine finds its network files next to it.
    */
-  async saveUpload(folder: string, name: string, body: Readable) {
-    const dir = folder ? path.join(this.dir, safeName(folder)) : this.dir;
+  async saveUpload(family: string, version: string, name: string, body: Readable) {
+    family = safeName(family);
+    await this.makeVersioned(family);
+    const dir = path.join(this.dir, family, safeName(version));
     await fs.mkdir(dir, { recursive: true });
     const file = path.join(dir, safeName(name));
     await pipeline(body, createWriteStream(file));
     if (!SKIP.test(file)) await fs.chmod(file, 0o755);
+  }
+
+  /**
+   * An engine kept the old way (a file in `engines/`, or files directly in
+   * `engines/<family>/`) moves into `engines/<family>/v1/` before its next version
+   * is added. `engines.json` entries pointing at the moved files are updated.
+   */
+  private async makeVersioned(family: string) {
+    const legacy = this.engines.filter((e) => e.family === family && !e.version);
+    if (!legacy.length) return;
+    const famDir = path.join(this.dir, family);
+    const v1 = path.join(famDir, 'v1');
+    const moves = new Map<string, string>();
+    const st = await fs.stat(famDir).catch(() => null);
+    if (st?.isDirectory()) {
+      // Files directly in the family folder: move all of them (engine + network files).
+      await fs.mkdir(v1, { recursive: true });
+      for (const ent of await fs.readdir(famDir, { withFileTypes: true })) {
+        if (ent.isDirectory() || ent.name.startsWith('.')) continue;
+        moves.set(path.join(famDir, ent.name), path.join(v1, ent.name));
+      }
+    } else {
+      // Loose files in engines/: move the engine file(s); a file may be named like the folder.
+      const tmp = path.join(this.dir, `.${family}.moving`);
+      await fs.mkdir(tmp, { recursive: true });
+      for (const e of legacy) {
+        const file = engineFile(e);
+        if (file) moves.set(file, path.join(tmp, path.basename(file)));
+      }
+      for (const [from, to] of moves) await fs.rename(from, to);
+      await fs.mkdir(famDir, { recursive: true });
+      await fs.rename(tmp, v1);
+      for (const [from, to] of moves) moves.set(from, path.join(v1, path.basename(to)));
+    }
+    if (st?.isDirectory()) for (const [from, to] of moves) await fs.rename(from, to);
+    const config = await this.readConfig();
+    const moved = (p: string) => moves.get(this.resolve(p));
+    let changed = false;
+    for (const c of config) {
+      const cmd = moved(c.command);
+      if (cmd) [c.command, changed] = [this.relCommand(cmd), true];
+      c.args = c.args?.map((a) => (path.isAbsolute(a) && moved(a) ? ((changed = true), moved(a)!) : a));
+    }
+    if (changed) await this.writeConfig(config);
   }
 
   /** Set the display name; engines found by scanning get an `engines.json` entry for it. */
@@ -102,10 +150,35 @@ export class EngineRegistry {
     if (!e) return this.engines;
     const config = await this.readConfig();
     if (config.some((c) => this.idOf(c) === id)) await this.writeConfig(config.filter((c) => this.idOf(c) !== id));
-    // Delete the engine file (for scripts, the script) when it lives in the engines folder.
-    const file = path.isAbsolute(e.command) ? e.command : e.args[0];
-    if (file && path.resolve(file).startsWith(this.dir + path.sep)) await fs.rm(file, { force: true });
+    const file = engineFile(e);
+    if (file && path.resolve(file).startsWith(this.dir + path.sep)) {
+      if (e.family && e.version) {
+        // A version is its whole folder; drop the engine's folder once no versions are left.
+        const famDir = path.join(this.dir, e.family);
+        await fs.rm(path.join(famDir, e.version), { recursive: true, force: true });
+        if (!(await fs.readdir(famDir).catch(() => [])).some((n) => !n.startsWith('.'))) await fs.rm(famDir, { recursive: true, force: true });
+      } else {
+        // Delete the engine file (for scripts, the script).
+        await fs.rm(file, { force: true });
+      }
+    }
     return this.refresh();
+  }
+
+  /** Family and version from where the engine file sits in the engines folder. */
+  private withVersion(e: EngineInfo, configName?: string): EngineInfo {
+    const file = engineFile(e);
+    const rel = file ? path.relative(this.dir, file) : '..';
+    if (rel.startsWith('..') || path.isAbsolute(rel)) return e;
+    const parts = rel.split(path.sep);
+    if (parts.length === 1) e.family = stem(parts[0]);
+    else e.family = parts[0];
+    if (parts.length === 3) {
+      e.version = parts[1];
+      e.label = configName ?? parts[1];
+      e.name = `${e.family} ${e.label}`;
+    }
+    return e;
   }
 
   private idOf(c: ConfigEntry) {
@@ -137,7 +210,8 @@ export class EngineRegistry {
         if (ent.name.startsWith('.') || SKIP.test(ent.name)) continue;
         const full = path.join(dir, ent.name);
         if (ent.isDirectory()) {
-          if (depth === 0) await visit(full, 1);
+          // engines/<engine>/ and engines/<engine>/<version>/
+          if (depth < 2) await visit(full, depth + 1);
           continue;
         }
         const st = await fs.stat(full).catch(() => null);
@@ -173,7 +247,8 @@ export class EngineRegistry {
     e.error = res.error;
     e.author = res.author;
     e.host = res.host;
-    if (e.source === 'auto' && res.uciName) e.name = res.uciName;
+    // Versions keep "<family> <version>": all versions usually report the same UCI name.
+    if (e.source === 'auto' && res.uciName && !e.version) e.name = res.uciName;
   }
 
   private async readConfig(): Promise<ConfigEntry[]> {
@@ -193,6 +268,21 @@ export class EngineRegistry {
 function safeName(name: string) {
   const base = path.basename(name).replace(/[^\w.+-]/g, '_');
   return base.replace(/^\.+/, '') || 'engine';
+}
+
+function stem(file: string) {
+  return path.basename(file).replace(/\.(py|js|mjs|sh)$/, '');
+}
+
+/** The engine's own file: the executable, or the script for interpreters. */
+function engineFile(e: { command: string; args: string[] }) {
+  if (path.isAbsolute(e.command)) return e.command;
+  return e.args[0] && path.isAbsolute(e.args[0]) ? e.args[0] : undefined;
+}
+
+/** The number in a version name ('v12' → 12), for sorting; 0 when there is none. */
+export function versionNum(v?: string) {
+  return Number(v?.match(/\d+/)?.[0] ?? 0);
 }
 
 function idFor(command: string, args: string[]) {

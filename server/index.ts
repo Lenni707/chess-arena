@@ -7,6 +7,7 @@ import type { ClientMsg, PlayerRef, ServerMsg, TimeControl } from '../shared/pro
 import { EngineRegistry } from './engines.js';
 import { EnginePlayer, Game, HumanPlayer, type Player } from './game.js';
 import { UciEngine } from './uci.js';
+import { Match } from './match.js';
 import { engineHost } from './host-link.js';
 
 const PORT = Number(process.env.PORT ?? 3000);
@@ -19,6 +20,7 @@ const ENGINE_HOST = process.env.ENGINE_HOST;
 const registry = new EngineRegistry(ENGINES_DIR);
 
 let play: { game: Game; engines: UciEngine[]; human: HumanPlayer[] } | null = null;
+let match: Match | null = null;
 
 // ---------- static files ----------
 
@@ -39,7 +41,8 @@ const server = http.createServer(async (req, res) => {
     // Uploads become runnable engines, so other websites must not be able to post them.
     if (!sameOrigin(req)) return void res.writeHead(403).end();
     try {
-      await registry.saveUpload(url.searchParams.get('folder') ?? '', url.searchParams.get('name') ?? 'engine', req);
+      const q = url.searchParams;
+      await registry.saveUpload(q.get('engine') ?? 'engine', q.get('version') ?? 'v1', q.get('name') ?? 'engine', req);
       res.writeHead(204).end();
     } catch (err) {
       res.writeHead(500, { 'content-type': 'text/plain' }).end((err as Error).message);
@@ -86,6 +89,7 @@ wss.on('connection', (ws) => {
   send(ws, { t: 'hello', cores: os.cpus().length });
   send(ws, { t: 'engines', engines: registry.list() });
   if (play) send(ws, { t: 'game', game: play.game.state() });
+  send(ws, { t: 'match', match: match?.summary() ?? null });
   ws.on('message', (raw) => {
     let msg: ClientMsg;
     try {
@@ -121,6 +125,12 @@ async function handle(ws: WebSocket, msg: ClientMsg) {
       else send(ws, { t: 'game', game: play.game.state() });
       break;
     }
+    case 'match.start':
+      startMatch(msg);
+      break;
+    case 'match.stop':
+      match?.stop();
+      break;
     case 'play.resign': {
       if (!play || play.game.id !== msg.gameId) return;
       const g = play.game;
@@ -186,6 +196,32 @@ async function startPlay(white: PlayerRef, black: PlayerRef, tc: TimeControl) {
   });
 }
 
+// ---------- match ----------
+
+function startMatch(msg: Extract<ClientMsg, { t: 'match.start' }>) {
+  const a = registry.get(msg.engineA);
+  const b = registry.get(msg.engineB);
+  if (!a || !b) throw new Error('Pick two engines');
+  match?.stop();
+  const m = new Match(
+    {
+      engineA: a,
+      engineB: b,
+      defA: registry.def(a),
+      defB: registry.def(b),
+      games: Math.max(1, Math.min(100_000, Math.floor(msg.games))),
+      tc: msg.tc,
+      concurrency: Math.max(1, Math.min(500, Math.floor(msg.concurrency))),
+    },
+    (t) => {
+      if (match === m) broadcast({ t: 'match.tick', id: m.id, ...t });
+    },
+  );
+  match = m;
+  broadcast({ t: 'match', match: m.summary() });
+  m.run().catch((err) => console.error('match failed', err));
+}
+
 // ---------- boot ----------
 
 await registry.refresh();
@@ -205,6 +241,7 @@ if (ENGINE_HOST) {
 for (const sig of ['SIGINT', 'SIGTERM'] as const) {
   process.on(sig, () => {
     stopPlay();
+    match?.stop();
     process.exit(0);
   });
 }

@@ -14,6 +14,12 @@ export interface EngineInfo {
   status: 'ok' | 'error' | 'unknown';
   error?: string;
   author?: string;
+  /** For engines kept as versions (`engines/<family>/<version>/`): the engine's folder name. */
+  family?: string;
+  /** Version folder name, e.g. 'v3'. Versions sort by the number in it. */
+  version?: string;
+  /** Name of the version within its family: the folder name, or what it was renamed to. */
+  label?: string;
   /** Set when the engine runs on the engine host instead of the server, e.g. 'macOS'. */
   host?: string;
 }
@@ -45,18 +51,61 @@ export interface GameState {
   reason?: string;
 }
 
+/** One board of the live grid: a parallel game slot and the game it plays now. */
+export interface MatchBoard {
+  slot: number;
+  /** Game number (0-based), or -1 before the slot's first game. */
+  game: number;
+  fen: string;
+  /** Last move as UCI, '' if none. */
+  lm: string;
+  /** True when engine A has White. */
+  aWhite: boolean;
+  /** Result of the game when it just ended, '*' while it runs. */
+  result: Result;
+  /** Result of the slot's previous game (shown briefly when the next one starts). */
+  last: Result;
+  /** Whether engine A had White in that previous game. */
+  lastAWhite: boolean;
+}
+
+export interface Tally {
+  aWins: number;
+  bWins: number;
+  draws: number;
+  done: number;
+  total: number;
+}
+
+export interface MatchSummary {
+  id: string;
+  engineA: { id: string; name: string };
+  engineB: { id: string; name: string };
+  games: number;
+  tc: TimeControl;
+  concurrency: number;
+  running: boolean;
+  boards: MatchBoard[];
+  tally: Tally;
+}
+
 export type ClientMsg =
   | { t: 'engines.refresh' }
   | { t: 'engines.rename'; id: string; name: string }
   | { t: 'engines.remove'; id: string }
   | { t: 'play.new'; white: PlayerRef; black: PlayerRef; tc: TimeControl }
   | { t: 'play.move'; gameId: string; uci: string }
-  | { t: 'play.resign'; gameId: string };
+  | { t: 'play.resign'; gameId: string }
+  | { t: 'match.start'; engineA: string; engineB: string; games: number; tc: TimeControl; concurrency: number }
+  | { t: 'match.stop' };
 
 export type ServerMsg =
   | { t: 'hello'; cores: number }
   | { t: 'engines'; engines: EngineInfo[] }
   | { t: 'game'; game: GameState }
+  | { t: 'match'; match: MatchSummary | null }
+  /** Boards that changed and the new tally, batched every 100 ms. */
+  | { t: 'match.tick'; id: string; boards: MatchBoard[]; tally: Tally; running: boolean }
   | { t: 'error'; message: string };
 
 export const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';

@@ -9,7 +9,7 @@ A clean, modern chess GUI for your own UCI engines:
 - adding an engine is as easy as picking its file
 - no extra menus
 
-The full vision also covers engines playing each other: matches with many games, a clear view of who won, and a satisfying grid of 100+ live boards. Part 1 (play against one engine) is built. Part 2 (engine vs. engine) is planned below.
+The full vision also covers engines playing each other: matches with many games, a clear view of who won, and a satisfying grid of 100+ live boards. Part 1 (play against one engine) and the core of part 2 (engine versions, matches, the live board grid) are built. The rest of part 2 is listed below.
 
 # Part 1: Play against an engine (built)
 
@@ -89,7 +89,9 @@ You also get the last-move highlight, a red glow when a king is in check, move, 
 | Message types shared by client and server | `shared/protocol.ts` |
 | Interactive board (drag, click, promotion, arrows, animation) | `client/src/board/Board.ts` |
 | Board + eval bar + clocks + move list | `client/src/views/GameView.ts` |
-| Setup panel / engines panel | `client/src/views/play.ts`, `client/src/views/engines.ts` |
+| Setup panel / engines panel (versions) | `client/src/views/play.ts`, `client/src/views/engines.ts` |
+| Match runner (parallel slots, tally) | `server/match.ts` |
+| Match tab: settings, score, canvas board grid | `client/src/views/match.ts` |
 
 Stack: Node 22 + TypeScript, `ws`, shakmaty 0.30 (Rust → WASM via wasm-bindgen 0.2.129, built without the `magics` tables to keep it at ~130 KB), Vite (no UI framework). Docker uses a `rust:1-slim` stage for the WASM build and `node:22-slim` + python3 to run. Pieces: cburnett set (GPLv2+, from lichess).
 
@@ -104,62 +106,32 @@ Design: dark slate background `#171b22`, stone `#dcd8cc` and slate-blue `#7d8ba0
 - the phone-sized layout
 - adding an engine through the file picker and removing it
 
-# Part 2: Engine vs. engine (planned)
+# Part 2: Engine vs. engine
 
-Commit `fcc4985` contains a working, tested server-side match runner (`server/match.ts`) and opening book (`server/openings.ts`). Restore them with:
+## Built
 
-```sh
-git checkout fcc4985 -- server/match.ts server/openings.ts
-```
+- **Engine versions.** Layout: `engines/<engine>/<version>/<files>`.
+  - Uploads always go into a version folder. The client chooses the next free `vN`.
+  - An engine kept the old way (a loose file, or files directly in `engines/<engine>/`) is moved into `v1/` when its first new version is added, and its `engines.json` entries are rewritten.
+  - The list groups versions under their engine, newest first, marked "latest".
+  - Renaming a version changes its label (`engines.json` `name`). Removing a version deletes its folder.
+- **Matches** (`server/match.ts`, the **Match** tab, `client/src/views/match.ts`).
+  - Settings: engine A vs. B; 100–10,000 games; 20 ms / 100 ms / 1 s per move or 10+0.1; 16–200 boards at once.
+  - Each board is a slot that plays games one after another and keeps one process per engine (`stop` + `ucinewgame` + `isready` between games). A dead engine is restarted, and an engine that can't start loses that game.
+  - Colors swap every game. There is no opening book (the user chose this): every game starts from the start position.
+- **Grid:** one `<canvas>` per board. A board redraws only when its position changes, in one `requestAnimationFrame` pass with the device pixel ratio capped at 2. Board size is chosen to fit every board on screen (minimum 40 px).
+  - A finished game tints the board in the winner's color. When the next game starts, the old result flashes.
+  - Updates are batched by the server every 100 ms (`match.tick` with only the changed boards).
+- **Score:** A wins / draws / B wins, a stacked bar, A's score, and the Elo difference ± 95%, shown from 10 games on. Score `s = (W + D/2)/N`, `elo = −400·log10(1/s − 1)`, and the error comes from the per-game score variance.
 
-## 1. Engine vs. engine (single game)
+## Not built yet
 
-- Let either side of a game be an engine, so two engines can play one game while you watch.
-- The server already supports this: `play.new` takes `white` and `black`, each `'human'` or an engine id. The UI only needs a second engine picker in place of "You play".
-- "Resign" turns into "Stop" when no human is playing (the server already handles this case).
+- Engine vs. engine as a single game on the big board (the server's `play.new` already accepts two engine ids).
+- Click a mini board to follow that game on the big board, with its move list.
+- A results list per game, PGN download, and saving match results to disk.
+- Opening variety (book lines). The user doesn't want this for now.
 
-## 2. Matches: N games between two engines
-
-Settings:
-- engine A, engine B
-- number of games (quick picks: 10, 50, 100, 250, 500)
-- time control, as fixed time per move (50 ms, 200 ms, 1 s) or a clock (1+0.1, 10+0.1, 60+0.6)
-- games at once, defaulting to the number of CPU cores
-
-Rules:
-- **Colors swap every game.** Game 2k has A as White, game 2k+1 has B as White.
-- **Openings vary.** Each pair of games starts from one of ~50 balanced 6-ply lines, with colors swapped. Without this, two deterministic engines replay the same game every time. Once the book runs out, add 2 random quiet plies that don't hang a piece.
-- **Engine processes are reused.** Each worker slot keeps one process per engine and sends `stop` + `ucinewgame` + `isready` between games. A dead or hung engine is restarted, and the game it failed counts as a loss for it.
-- **How games end:** checkmate, stalemate, threefold repetition, 50-move rule, insufficient material, flag (with a small over-use margin), illegal move, crash. All of these already exist in `server/game.ts`.
-
-Protocol (removed from `shared/protocol.ts`, restore together):
-- client → server: `match.start {engineA, engineB, games, tc, concurrency}` and `match.stop`
-- server → client: `match {summary}` once, then `match.tick {boards, tally, running, reasons}` with the changed boards batched every 100 ms
-
-## 3. Showing who won
-
-- A tally across the top: engine A's win count on the left in amber `#f0b44c`, draws in the middle in grey, engine B's wins on the right in blue `#7aa7f5`, all as large tabular numbers.
-- Below it, a stacked bar (A | draws | B) that grows as games finish.
-- A stats line showing:
-  - games done out of the total
-  - A's score in %
-  - **Elo difference ± 95% error**, where score `s = (W + D/2)/N`, `elo = −400·log10(1/s − 1)`, and the error comes from the per-game score variance
-- When the match finishes, the leader's number pulses once.
-- A results list with one row per game: number, White vs Black (in engine colors), result, reason. Clicking a row opens that game.
-- Download the match as PGN (`/api/match.pgn`).
-
-## 4. The 100+ board grid
-
-- Every game in the match appears as a live mini board in a responsive grid, with a size slider from 64 to 260 px.
-- Boards are drawn on `<canvas>`, not in the DOM, so 100–500 boards stay smooth. Each one redraws only when its position changes, and the moved piece slides over 140 ms in one shared `requestAnimationFrame` loop.
-- **Queued games** are dimmed and grey. **Playing** games show normally with a last-move highlight. **Finished** games fade to the winner's color (amber or blue, dark grey for draws), and the result (`1–0`, `0–1`, `½`) pops in.
-- Clicking a board opens a viewer that follows that game live, with move list, arrow-key navigation and flip.
-- Performance notes:
-  - batch updates on the server (one message per 100 ms)
-  - cap the canvas device pixel ratio at 2
-  - skip animations when the tab is hidden
-
-## 5. Smaller ideas
+## Smaller ideas
 
 - Start from a custom FEN, or load PGN openings from a file.
 - Per-engine UCI options editable in the UI (now only through `engines.json`).
