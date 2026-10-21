@@ -1104,16 +1104,20 @@ select {
   background: rgba(240, 180, 76, 0.6);
 }
 
+/* Legal moves of the selected piece, as on chess.com: a dot on empty squares,
+   a ring around pieces that can be captured. */
 .mark.dest {
-  background: radial-gradient(rgba(20, 24, 32, 0.28) 0 16%, transparent 17%);
+  background: radial-gradient(circle closest-side, rgba(20, 24, 32, 0.42) 0 33%, transparent calc(33% + 1px));
 }
 
 .mark.capture-dest {
-  background: radial-gradient(transparent 0 70%, rgba(20, 24, 32, 0.28) 71%);
+  background: radial-gradient(circle closest-side, transparent 0 84%, rgba(20, 24, 32, 0.42) calc(84% + 1px) 100%, transparent calc(100% + 1px));
 }
 
+/* The square under a dragged piece. */
 .mark.hover {
-  box-shadow: inset 0 0 0 4px rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.28);
+  box-shadow: inset 0 0 0 4px rgba(255, 255, 255, 0.75);
 }
 
 .mark.check {
