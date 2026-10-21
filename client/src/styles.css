@@ -514,23 +514,26 @@ select {
 /* ---------- match ---------- */
 
 .match-view .stage.grid-stage {
-  align-items: flex-start;
-  overflow-y: auto;
+  align-items: safe center;
+  justify-content: safe center;
+  overflow: auto;
   container-type: normal;
 }
 
+/* All boards packed into one framed rectangle. */
 .board-grid {
-  width: 100%;
   display: grid;
-  gap: var(--gap, 8px);
-  justify-content: center;
+  gap: var(--gap, 3px);
+  padding: var(--gap, 3px);
+  background: var(--line);
+  border-radius: 8px;
+  flex: none;
 }
 
 .mini-board {
   position: relative;
   width: var(--mb, 80px);
   height: var(--mb, 80px);
-  border-radius: 4px;
   overflow: hidden;
 }
 

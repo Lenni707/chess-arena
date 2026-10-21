@@ -169,7 +169,8 @@ class BoardGrid {
   private size = 0;
 
   constructor() {
-    new ResizeObserver(() => this.layout()).observe(this.el);
+    // Observe the stage, not the grid: the grid's own size follows from the layout.
+    queueMicrotask(() => new ResizeObserver(() => this.layout()).observe(this.el.parentElement!));
     piecesReady.then(() => this.cells.forEach((_, i) => this.mark(i)));
   }
 
@@ -209,24 +210,38 @@ class BoardGrid {
     cell.flash.classList.add('show');
   }
 
-  /** Fit all boards into the stage: pick the column count that gives the biggest boards. */
+  /**
+   * Fit all boards into the stage as one full rectangle: the column count must
+   * divide the number of boards (100 → 10 × 10), so no row is left half empty.
+   */
   private layout() {
     const n = this.cells.length;
     if (!n) return;
-    const gap = n > 100 ? 4 : 8;
-    const w = this.el.clientWidth;
-    const avail = this.el.parentElement!.clientHeight - 40;
-    let best = 0;
-    let bestCols = 1;
-    for (let cols = 1; cols <= n; cols++) {
+    const gap = n > 64 ? 2 : 3;
+    const stage = this.el.parentElement!;
+    const w = stage.clientWidth - 40;
+    const avail = stage.clientHeight - 40;
+    const fit = (cols: number) => {
       const rows = Math.ceil(n / cols);
-      const size = Math.min((w - gap * (cols - 1)) / cols, avail > 100 ? (avail - gap * (rows - 1)) / rows : Infinity);
-      if (size > best) [best, bestCols] = [size, cols];
+      const byW = (w - gap * (cols - 1)) / cols;
+      return Math.floor(avail > 100 ? Math.min(byW, (avail - gap * (rows - 1)) / rows) : byW);
+    };
+    let cols = 1;
+    let any = 0;
+    for (let c = 1; c <= n; c++) {
+      any = Math.max(any, fit(c));
+      if (n % c === 0 && fit(c) > fit(cols)) cols = c;
     }
-    const size = Math.max(40, Math.floor(best));
+    // A board count with few divisors (e.g. a prime) would get tiny boards; allow a ragged row then.
+    if (fit(cols) < any * 0.7) for (let c = 1; c <= n; c++) if (fit(c) === any) cols = c;
+    // Too many boards for the screen: keep a full rectangle that fits the width and scroll down.
+    if (fit(cols) < 40) {
+      for (let c = n; c >= 1; c--) if (n % c === 0 && (w - gap * (c - 1)) / c >= 40) { cols = c; break; }
+    }
+    const size = Math.max(40, fit(cols));
     this.el.style.setProperty('--mb', `${size}px`);
     this.el.style.setProperty('--gap', `${gap}px`);
-    this.el.style.gridTemplateColumns = `repeat(${size === 40 ? 'auto-fill' : bestCols}, var(--mb))`;
+    this.el.style.gridTemplateColumns = `repeat(${cols}, var(--mb))`;
     if (size !== this.size) {
       this.size = size;
       this.cells.forEach((c, i) => ((c.drawn = ''), this.mark(i)));

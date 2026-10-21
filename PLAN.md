@@ -119,7 +119,7 @@ Design: dark slate background `#171b22`, stone `#dcd8cc` and slate-blue `#7d8ba0
   - Settings: engine A vs. B; 100–10,000 games; 20 ms / 100 ms / 1 s per move or 10+0.1; 16–200 boards at once.
   - Each board is a slot that plays games one after another and keeps one process per engine (`stop` + `ucinewgame` + `isready` between games). A dead engine is restarted, and an engine that can't start loses that game.
   - Colors swap every game. There is no opening book (the user chose this): every game starts from the start position.
-- **Grid:** one `<canvas>` per board. A board redraws only when its position changes, in one `requestAnimationFrame` pass with the device pixel ratio capped at 2. Board size is chosen to fit every board on screen (minimum 40 px).
+- **Grid:** one `<canvas>` per board. A board redraws only when its position changes, in one `requestAnimationFrame` pass with the device pixel ratio capped at 2. Boards always form one full rectangle: the column count divides the board count (100 → 10×10, 200 → 20×10), packed with 2–3 px gaps in one framed box, sized to fit the screen (minimum 40 px, then it scrolls).
   - A finished game tints the board in the winner's color. When the next game starts, the old result flashes.
   - Updates are batched by the server every 100 ms (`match.tick` with only the changed boards).
 - **Score:** A wins / draws / B wins, a stacked bar, A's score, and the Elo difference ± 95%, shown from 10 games on. Score `s = (W + D/2)/N`, `elo = −400·log10(1/s − 1)`, and the error comes from the per-game score variance.
