@@ -1,9 +1,11 @@
 import './styles.css';
+import { chessReady } from './chess';
 import { h } from './dom';
 import { on, store } from './store';
 import { conn } from './ws';
 import { playView } from './views/play';
 
+await chessReady;
 const play = playView();
 const offline = h('div.offline', { role: 'status' }, 'Reconnecting to the server…');
 const top = h('header.top', {}, h('div.brand', {}, h('img', { src: '/pieces/wN.svg', alt: '' }), 'Arena'));

@@ -4,3 +4,6 @@ dist
 # your engines stay local
 engines/*
 !engines/README.md
+core/target
+core/pkg
+.engine-host-token

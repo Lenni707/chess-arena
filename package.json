@@ -4,14 +4,16 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "concurrently -k -n server,client \"tsx watch server/index.ts\" \"vite\"",
-    "build": "vite build && tsc -p tsconfig.server.json",
+    "core": "sh scripts/build-core.sh",
+    "dev": "npm run core && concurrently -k -n server,client \"tsx watch server/index.ts\" \"vite\"",
+    "build": "npm run core && npm run build:app",
+    "build:app": "vite build && tsc -p tsconfig.server.json && rm -rf dist/server/core && mkdir -p dist/server/core && cp -R core/pkg dist/server/core/pkg",
     "start": "node dist/server/server/index.js",
-    "test": "vitest run",
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.server.json"
+    "engine-host": "node host/engine-host.ts",
+    "test": "npm run core && cargo test --quiet --manifest-path core/Cargo.toml && vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.server.json && tsc -p tsconfig.host.json"
   },
   "dependencies": {
-    "chess.js": "^1.4.0",
     "ws": "^8.22.0"
   },
   "devDependencies": {

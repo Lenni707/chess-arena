@@ -1,6 +1,6 @@
-import { Chess } from 'chess.js';
 import type { Color, GameState, MoveRecord, Result, TimeControl } from '../shared/protocol.js';
 import { START_FEN } from '../shared/protocol.js';
+import { Position } from './chess.js';
 import { EngineError, UciEngine, type SearchInfo } from './uci.js';
 
 export interface MoveRequest {
@@ -83,7 +83,7 @@ export class HumanPlayer implements Player {
 }
 
 export class Game {
-  readonly chess = new Chess();
+  readonly pos = new Position();
   readonly moves: MoveRecord[] = [];
   readonly uci: string[] = [];
   result: Result = '*';
@@ -121,7 +121,7 @@ export class Game {
       black: { name: this.black.name, ref: this.black.ref },
       startFen: START_FEN,
       moves: this.moves,
-      fen: this.chess.fen(),
+      fen: this.pos.fen(),
       clock: { ...clock, running: this.running, tc: this.tc },
       result: this.result,
       reason: this.reason,
@@ -132,7 +132,7 @@ export class Game {
     this.onUpdate(this);
     this.checkEnd();
     while (!this.over && !this.stopped) {
-      const color = this.chess.turn();
+      const color = this.pos.turn() as Color;
       const player = color === 'w' ? this.white : this.black;
       const other = color === 'w' ? 'black' : 'white';
       this.running = color;
@@ -194,33 +194,33 @@ export class Game {
   }
 
   private apply(uci: string, info?: SearchInfo, ms?: number): boolean {
-    let mv;
+    const color = this.pos.turn();
+    let san: string;
     try {
-      mv = this.chess.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), promotion: uci[4] || undefined });
+      san = this.pos.play(uci);
     } catch {
       return false;
     }
-    const rec: MoveRecord = { uci: mv.lan, san: mv.san };
+    const rec: MoveRecord = { uci, san };
     if (ms !== undefined) rec.ms = ms;
     if (info && (info.cp !== undefined || info.mate !== undefined)) {
       // Engines report the score for the side to move; store it from White's view.
-      const sign = mv.color === 'w' ? 1 : -1;
+      const sign = color === 'w' ? 1 : -1;
       rec.eval = { depth: info.depth };
       if (info.cp !== undefined) rec.eval.cp = sign * info.cp;
       if (info.mate !== undefined) rec.eval.mate = sign * info.mate;
     }
     this.moves.push(rec);
-    this.uci.push(mv.lan);
+    this.uci.push(uci);
     return true;
   }
 
   private checkEnd() {
-    const c = this.chess;
-    if (c.isCheckmate()) this.finish(c.turn() === 'w' ? '0-1' : '1-0', 'checkmate');
-    else if (c.isStalemate()) this.finish('1/2-1/2', 'stalemate');
-    else if (c.isInsufficientMaterial()) this.finish('1/2-1/2', 'insufficient material');
-    else if (c.isThreefoldRepetition()) this.finish('1/2-1/2', 'threefold repetition');
-    else if (c.isDrawByFiftyMoves()) this.finish('1/2-1/2', '50-move rule');
+    const reason = this.pos.outcome();
+    if (!reason) return;
+    // Checkmate: the side to move is mated. Everything else is a draw.
+    if (reason === 'checkmate') this.finish(this.pos.turn() === 'w' ? '0-1' : '1-0', reason);
+    else this.finish('1/2-1/2', reason);
   }
 
   private flag(color: Color) {
@@ -228,7 +228,7 @@ export class Game {
     if (this.tc.kind === 'clock') this.clock[color] = 0;
     const winner = color === 'w' ? 'b' : 'w';
     const loserName = (color === 'w' ? this.white : this.black).name;
-    if (onlyKing(this.chess, winner)) this.finish('1/2-1/2', `${loserName} ran out of time vs. insufficient material`);
+    if (this.pos.hasInsufficientMaterial(winner)) this.finish('1/2-1/2', `${loserName} ran out of time vs. insufficient material`);
     else this.finish(winner === 'w' ? '1-0' : '0-1', `${loserName} ran out of time`);
     (color === 'w' ? this.white : this.black).cancel();
     this.onUpdate(this);
@@ -243,8 +243,4 @@ export class Game {
     this.reason = reason;
     this.running = null;
   }
-}
-
-function onlyKing(chess: Chess, color: Color) {
-  return chess.board().every((row) => row.every((sq) => !sq || sq.color !== color || sq.type === 'k'));
 }

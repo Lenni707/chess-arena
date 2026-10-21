@@ -2,3 +2,5 @@ node_modules
 dist
 engines
 .git
+core/target
+core/pkg

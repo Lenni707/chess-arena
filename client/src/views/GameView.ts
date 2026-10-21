@@ -1,7 +1,7 @@
-import { Chess } from 'chess.js';
 import type { Color, GameState, MoveRecord } from '../../../shared/protocol';
 import { START_FEN } from '../../../shared/protocol';
 import { Board } from '../board/Board';
+import { Position } from '../chess';
 import { fmtClock, h } from '../dom';
 import { sound } from '../sound';
 
@@ -101,12 +101,12 @@ export class GameView {
       this.ply = null;
     }
     if (this.fens.length - 1 > g.moves.length) this.fens = [g.startFen];
-    const c = new Chess(this.fens[this.fens.length - 1]);
+    const pos = new Position(this.fens[this.fens.length - 1]);
     for (let i = this.fens.length - 1; i < g.moves.length; i++) {
-      const m = g.moves[i].uci;
-      c.move({ from: m.slice(0, 2), to: m.slice(2, 4), promotion: m[4] });
-      this.fens.push(c.fen());
+      pos.play(g.moves[i].uci);
+      this.fens.push(pos.fen());
     }
+    pos.free();
     if (this.opts.sounds && !isNew && prev) {
       if (g.moves.length > prev.moves.length && this.ply === null) {
         const san = g.moves[g.moves.length - 1].san;

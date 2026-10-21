@@ -44,6 +44,36 @@ export function enginesSection(): HTMLElement {
     h('button.link-btn', { type: 'button', onclick: () => conn.send({ t: 'engines.refresh' }) }, 'Rescan engines folder'),
   );
 
+  // Clicking a name turns it into a text field; Enter or leaving the field saves, Esc cancels.
+  let editing: string | null = null;
+  const rename = (id: string, name: string) => {
+    const value = name.trim();
+    const current = store.engines.find((e) => e.id === id)?.name;
+    editing = null;
+    if (value && value !== current) conn.send({ t: 'engines.rename', id, name: value });
+    render();
+  };
+  const nameEl = (e: (typeof store.engines)[number]) => {
+    if (editing !== e.id) {
+      return h('button.e-name', { type: 'button', title: 'Rename', onclick: () => ((editing = e.id), render()) }, e.name);
+    }
+    const input = h('input.e-rename', { type: 'text', value: e.name, maxLength: 60, 'aria-label': `New name for ${e.name}` });
+    let done = false;
+    const finish = (save: boolean) => {
+      if (done) return;
+      done = true;
+      if (save) rename(e.id, input.value);
+      else ((editing = null), render());
+    };
+    input.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter') finish(true);
+      else if (ev.key === 'Escape') finish(false);
+    });
+    input.addEventListener('blur', () => finish(true));
+    queueMicrotask(() => (input.focus(), input.select()));
+    return input;
+  };
+
   const remove = (id: string, name: string, source: string) => {
     if (source === 'auto' && !confirm(`Delete ${name} from the engines folder?`)) return;
     conn.send({ t: 'engines.remove', id });
@@ -58,7 +88,8 @@ export function enginesSection(): HTMLElement {
               'li',
               { class: e.status, title: e.error ?? e.command },
               h('span.status-dot'),
-              h('span.e-name', {}, e.name),
+              nameEl(e),
+              e.host ? h('span.e-host', { title: `Runs on the engine host (${e.host})` }, e.host) : null,
               e.status === 'error' ? h('span.e-err', {}, e.error ?? 'failed') : null,
               h('button.x', { 'aria-label': `Remove ${e.name}`, title: 'Remove', onclick: () => remove(e.id, e.name, e.source) }, '×'),
             ),

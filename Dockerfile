@@ -1,9 +1,19 @@
+# Chess rules: shakmaty compiled to WebAssembly.
+FROM rust:1-slim AS core
+RUN rustup target add wasm32-unknown-unknown && cargo install wasm-bindgen-cli --version 0.2.129 --locked
+WORKDIR /app
+COPY core/Cargo.toml core/Cargo.lock core/
+COPY core/src core/src
+COPY scripts/build-core.sh scripts/
+RUN sh scripts/build-core.sh
+
 FROM node:22-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
-RUN npm run build
+COPY --from=core /app/core/pkg core/pkg
+RUN npm run build:app
 
 FROM node:22-slim
 # python3 so script engines (*.py) run too; node is already here for *.js engines.

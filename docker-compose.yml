@@ -5,4 +5,9 @@ services:
       - "3000:3000"
     volumes:
       - ./engines:/engines
+    environment:
+      # macOS engines run on your Mac through the engine host: `npm run engine-host`.
+      ENGINE_HOST: host.docker.internal:7100
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     restart: unless-stopped

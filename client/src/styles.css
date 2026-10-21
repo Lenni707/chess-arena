@@ -364,10 +364,43 @@ select {
 }
 
 .e-name {
-  font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  border: 0;
+  background: none;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  min-width: 0;
+  cursor: text;
+}
+
+.e-name:hover {
+  text-decoration: underline dotted var(--faint);
+  text-underline-offset: 3px;
+}
+
+.e-rename {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  background: var(--bg);
+  border: 1px solid var(--a);
+  border-radius: 6px;
+  padding: 2px 6px;
+  margin: -3px 0;
+}
+
+.e-host {
+  flex: none;
+  font-size: 11px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 6px;
 }
 
 .e-err {

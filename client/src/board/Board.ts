@@ -1,6 +1,6 @@
-import { Chess, type Square } from 'chess.js';
 import type { Color } from '../../../shared/protocol';
 import { h } from '../dom';
+import { Position } from '../chess';
 import { parseFen, pieceUrl } from '../pieces';
 
 export interface BoardOptions {
@@ -29,7 +29,7 @@ export class Board {
   private promo: HTMLDivElement;
   private pieces: PieceEl[] = [];
   private fen = '';
-  private chess = new Chess();
+  private pos = new Position();
   private orientation: Color = 'w';
   private movable: Color | null = null;
   private lastMove = '';
@@ -83,7 +83,9 @@ export class Board {
     this.fen = fen;
     this.lastMove = lastMove;
     try {
-      this.chess.load(fen);
+      const pos = new Position(fen);
+      this.pos.free();
+      this.pos = pos;
     } catch {
       return;
     }
@@ -179,8 +181,8 @@ export class Board {
     }
     if (e.button !== 0) return;
     this.clearAnnotations();
-    const piece = this.chess.get(sq as Square);
-    const own = piece && piece.color === this.movable && this.chess.turn() === this.movable;
+    const piece = this.pos.pieceAt(sq);
+    const own = piece?.[0] === this.movable && this.pos.turn() === this.movable;
 
     if (this.selected && this.selected !== sq && this.dests(this.selected).includes(sq)) {
       this.tryMove(this.selected, sq);
@@ -264,27 +266,28 @@ export class Board {
   }
 
   private dests(from: string): string[] {
-    return this.chess.moves({ square: from as Square, verbose: true }).map((m) => m.to);
+    return [...new Set(this.pos.movesFrom(from).map((m) => m.slice(2, 4)))];
   }
 
   private async tryMove(from: string, to: string, animate = true) {
-    const piece = this.chess.get(from as Square);
-    let promotion: string | undefined;
-    if (piece?.type === 'p' && (to[1] === '8' || to[1] === '1')) {
-      promotion = await this.askPromotion(to, piece.color);
+    const piece = this.pos.pieceAt(from);
+    let promotion = '';
+    if (piece?.[1] === 'P' && (to[1] === '8' || to[1] === '1')) {
+      promotion = (await this.askPromotion(to, piece[0] as Color)) ?? '';
       if (!promotion) {
         this.syncPieces(false);
         this.select(null);
         return;
       }
     }
-    const mv = this.chess.move({ from, to, promotion });
-    this.fen = this.chess.fen();
-    this.lastMove = mv.lan;
+    const uci = from + to + promotion;
+    this.pos.play(uci);
+    this.fen = this.pos.fen();
+    this.lastMove = uci;
     this.selected = null;
     this.syncPieces(animate);
     this.renderMarks();
-    this.opts.onMove?.(mv.lan);
+    this.opts.onMove?.(uci);
   }
 
   private askPromotion(sq: string, color: Color): Promise<string | undefined> {
@@ -330,15 +333,16 @@ export class Board {
       add(this.lastMove.slice(0, 2), 'last');
       add(this.lastMove.slice(2, 4), 'last');
     }
-    if (this.chess.inCheck()) {
-      const k = this.chess.findPiece({ type: 'k', color: this.chess.turn() })[0];
-      if (k) add(k, 'check');
-    }
+    const king = this.pos.checkedKing();
+    if (king) add(king, 'check');
     for (const sq of this.circles) add(sq, 'circle');
     if (this.selected) {
       add(this.selected, 'selected');
-      for (const m of this.chess.moves({ square: this.selected as Square, verbose: true })) {
-        add(m.to, m.captured || m.isEnPassant() ? 'capture-dest' : 'dest');
+      const pawn = this.pos.pieceAt(this.selected)?.[1] === 'P';
+      for (const to of this.dests(this.selected)) {
+        // A pawn moving sideways onto an empty square captures en passant.
+        const capture = !!this.pos.pieceAt(to) || (pawn && to[0] !== this.selected[0]);
+        add(to, capture ? 'capture-dest' : 'dest');
       }
     }
     if (this.hover && this.drag?.active) add(this.hover, 'hover');

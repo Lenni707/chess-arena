@@ -1,13 +1,26 @@
-import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import fs from 'node:fs';
 import path from 'node:path';
+import { engineHost } from './host-link.js';
 
 export interface EngineDef {
   command: string;
   args: string[];
   options: Record<string, string | number | boolean>;
   cwd?: string;
+  /** Run on the engine host (your Mac) even if the container could run it. */
+  host?: boolean;
+}
+
+/** A running engine process, local or on the engine host. Lines are without '\n'. */
+export interface EngineProcess {
+  write(line: string): void;
+  /** Send `quit`, then kill the process if it hasn't exited shortly after. */
+  close(): void;
+  onLine: (line: string) => void;
+  /** Called once when the process is gone, with a human-readable reason. */
+  onExit: (reason: string) => void;
 }
 
 export interface SearchInfo {
@@ -32,11 +45,12 @@ type Waiter = { match: (line: string) => boolean; resolve: (line: string) => voi
 export class UciEngine {
   name = '';
   author = '';
-  private proc: ChildProcessWithoutNullStreams | null = null;
+  /** True when the engine runs on the engine host instead of in this process's OS. */
+  onHost = false;
+  private proc: EngineProcess | null = null;
   private waiters: Waiter[] = [];
   private info: SearchInfo = {};
   private exitReason: string | null = null;
-  private stderrTail = '';
 
   constructor(private def: EngineDef) {}
 
@@ -45,24 +59,16 @@ export class UciEngine {
   }
 
   async start(timeoutMs = 10_000): Promise<void> {
-    const wrongOs = foreignBinary(this.def.command);
-    if (wrongOs) {
-      this.fail(wrongOs);
-      throw new EngineError(wrongOs);
+    try {
+      this.onHost = runsOnHost(this.def);
+    } catch (err) {
+      this.fail((err as Error).message);
+      throw err;
     }
-    const cwd = this.def.cwd ?? (path.isAbsolute(this.def.command) ? path.dirname(this.def.command) : undefined);
-    const proc = spawn(this.def.command, this.def.args, { cwd, stdio: 'pipe' });
+    const proc = this.onHost ? engineHost.spawn(this.def) : spawnLocal(this.def);
     this.proc = proc;
-    proc.stdin.on('error', () => {});
-    proc.stderr.on('data', (d: Buffer) => {
-      this.stderrTail = (this.stderrTail + d.toString()).slice(-400);
-    });
-    proc.on('error', (err) => this.fail(describeSpawnError(err)));
-    proc.on('exit', (code, signal) => {
-      const tail = this.stderrTail.trim().split('\n').pop();
-      this.fail(`engine exited (${signal ?? `code ${code}`})${tail ? `: ${tail}` : ''}`);
-    });
-    createInterface({ input: proc.stdout }).on('line', (line) => this.onLine(line.trim()));
+    proc.onLine = (line) => this.onLine(line.trim());
+    proc.onExit = (reason) => this.fail(reason);
 
     this.send('uci');
     await this.waitFor((l) => l === 'uciok', timeoutMs, 'no uciok');
@@ -106,16 +112,12 @@ export class UciEngine {
 
   quit() {
     if (!this.proc) return;
-    const proc = this.proc;
-    this.send('quit');
+    if (this.alive) this.proc.close();
     this.fail('quit');
-    setTimeout(() => {
-      if (proc.exitCode === null && proc.signalCode === null) proc.kill('SIGKILL');
-    }, 500).unref();
   }
 
   private send(cmd: string) {
-    if (this.alive) this.proc!.stdin.write(cmd + '\n');
+    if (this.alive) this.proc!.write(cmd);
   }
 
   private onLine(line: string) {
@@ -173,16 +175,76 @@ export class UciEngine {
   }
 }
 
+/** Start an engine as a child process of this server. */
+function spawnLocal(def: EngineDef): EngineProcess {
+  const proc = spawn(def.command, def.args, { cwd: def.cwd ?? engineDir(def), stdio: 'pipe' });
+  let stderrTail = '';
+  let exited = false;
+  const ep: EngineProcess = {
+    write: (line) => {
+      if (!exited) proc.stdin.write(line + '\n');
+    },
+    close: () => {
+      ep.write('quit');
+      setTimeout(() => {
+        if (proc.exitCode === null && proc.signalCode === null) proc.kill('SIGKILL');
+      }, 500).unref();
+    },
+    onLine: () => {},
+    onExit: () => {},
+  };
+  const exit = (reason: string) => {
+    if (exited) return;
+    exited = true;
+    ep.onExit(reason);
+  };
+  proc.stdin.on('error', () => {});
+  proc.stderr.on('data', (d: Buffer) => {
+    stderrTail = (stderrTail + d.toString()).slice(-400);
+  });
+  proc.on('error', (err) => exit(describeSpawnError(err)));
+  proc.on('exit', (code, signal) => {
+    const tail = stderrTail.trim().split('\n').pop();
+    exit(`engine exited (${signal ?? `code ${code}`})${tail ? `: ${tail}` : ''}`);
+  });
+  createInterface({ input: proc.stdout }).on('line', (line) => ep.onLine(line));
+  return ep;
+}
+
+/** The engine's own folder (for scripts, the script's), so it finds files next to it. */
+export function engineDir(def: EngineDef): string | undefined {
+  const file = path.isAbsolute(def.command) ? def.command : def.args[0];
+  return file && path.isAbsolute(file) ? path.dirname(file) : undefined;
+}
+
+const START_HOST = 'start the engine host on your Mac with `npm run engine-host`';
+
+/** Decide where the engine runs; throws when it can't run anywhere right now. */
+function runsOnHost(def: EngineDef): boolean {
+  if (def.host) {
+    if (!engineHost.connected) throw new EngineError(`set to run on the engine host, which isn't connected: ${START_HOST}`);
+    return true;
+  }
+  const kind = binaryKind(def.command);
+  if (kind === 'macos' && process.platform !== 'darwin') {
+    if (engineHost.connected && engineHost.platform === 'darwin') return true;
+    throw new EngineError(`this is a macOS binary; to run it from Docker, ${START_HOST}`);
+  }
+  if (kind === 'windows' && process.platform !== 'win32') throw new EngineError('this is a Windows .exe; it needs a Linux or macOS build');
+  if (kind === 'linux' && process.platform !== 'linux') throw new EngineError('this is a Linux binary; run the app with Docker or use a native build');
+  return false;
+}
+
 function describeSpawnError(err: NodeJS.ErrnoException): string {
   if (err.code === 'ENOENT') return 'file not found';
   if (err.code === 'EACCES') return 'not executable (chmod +x)';
   if (err.code === 'ENOEXEC' || /exec format/i.test(err.message))
-    return 'wrong binary format — inside Docker engines must be Linux builds';
+    return 'wrong binary format: inside Docker an engine must be a Linux build (or a macOS build run by the engine host)';
   return err.message;
 }
 
-/** Explains binaries built for another OS (e.g. a macOS engine inside the Linux container). */
-function foreignBinary(command: string): string | null {
+/** Which OS an executable was built for, from its first bytes. */
+function binaryKind(command: string): 'macos' | 'windows' | 'linux' | null {
   if (!path.isAbsolute(command)) return null;
   let head: Buffer;
   try {
@@ -194,9 +256,8 @@ function foreignBinary(command: string): string | null {
     return null;
   }
   const magic = head.toString('hex');
-  const macho = ['cffaedfe', 'cefaedfe', 'feedfacf', 'feedface', 'cafebabe'].includes(magic);
-  if (macho && process.platform !== 'darwin') return 'this is a macOS binary; inside Docker the engine needs a Linux build';
-  if (head.subarray(0, 2).toString() === 'MZ' && process.platform !== 'win32') return 'this is a Windows .exe; it needs a Linux build';
-  if (magic === '7f454c46' && process.platform !== 'linux') return 'this is a Linux binary; run the app with Docker or use a native build';
+  if (['cffaedfe', 'cefaedfe', 'feedfacf', 'feedface', 'cafebabe'].includes(magic)) return 'macos';
+  if (head.subarray(0, 2).toString() === 'MZ') return 'windows';
+  if (magic === '7f454c46') return 'linux';
   return null;
 }

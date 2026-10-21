@@ -7,11 +7,14 @@ import type { ClientMsg, PlayerRef, ServerMsg, TimeControl } from '../shared/pro
 import { EngineRegistry } from './engines.js';
 import { EnginePlayer, Game, HumanPlayer, type Player } from './game.js';
 import { UciEngine } from './uci.js';
+import { engineHost } from './host-link.js';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const ROOT = process.cwd();
 const ENGINES_DIR = path.resolve(process.env.ENGINES_DIR ?? path.join(ROOT, 'engines'));
 const STATIC_DIR = path.resolve(process.env.STATIC_DIR ?? path.join(ROOT, 'dist/client'));
+/** Where the engine host runs, e.g. 'host.docker.internal:7100' (set in docker-compose.yml). */
+const ENGINE_HOST = process.env.ENGINE_HOST;
 
 const registry = new EngineRegistry(ENGINES_DIR);
 
@@ -27,11 +30,14 @@ const MIME: Record<string, string> = {
   '.png': 'image/png',
   '.woff2': 'font/woff2',
   '.json': 'application/json',
+  '.wasm': 'application/wasm',
 };
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url ?? '/', 'http://x');
   if (req.method === 'POST' && url.pathname === '/api/engines/upload') {
+    // Uploads become runnable engines, so other websites must not be able to post them.
+    if (!sameOrigin(req)) return void res.writeHead(403).end();
     try {
       await registry.saveUpload(url.searchParams.get('folder') ?? '', url.searchParams.get('name') ?? 'engine', req);
       res.writeHead(204).end();
@@ -52,9 +58,20 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+/** False for requests a browser sends on behalf of another site. */
+function sameOrigin(req: http.IncomingMessage) {
+  const origin = req.headers.origin;
+  if (!origin) return true;
+  try {
+    return new URL(origin).host === req.headers.host;
+  } catch {
+    return false;
+  }
+}
+
 // ---------- websocket ----------
 
-const wss = new WebSocketServer({ server, path: '/ws' });
+const wss = new WebSocketServer({ server, path: '/ws', verifyClient: ({ req }: { req: http.IncomingMessage }) => sameOrigin(req) });
 
 function send(ws: WebSocket, msg: ServerMsg) {
   if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
@@ -85,6 +102,10 @@ async function handle(ws: WebSocket, msg: ClientMsg) {
     case 'engines.refresh':
       broadcast({ t: 'engines', engines: await registry.refresh() });
       break;
+    case 'engines.rename':
+      if (!msg.name.trim()) throw new Error('Engine name is empty');
+      broadcast({ t: 'engines', engines: await registry.rename(msg.id, msg.name.trim().slice(0, 60)) });
+      break;
     case 'engines.remove':
       broadcast({ t: 'engines', engines: await registry.remove(msg.id) });
       break;
@@ -93,9 +114,9 @@ async function handle(ws: WebSocket, msg: ClientMsg) {
       break;
     case 'play.move': {
       if (!play || play.game.id !== msg.gameId || play.game.over) return;
-      const turn = play.game.chess.turn();
+      const turn = play.game.pos.turn();
       const p = turn === 'w' ? play.game.white : play.game.black;
-      const legal = play.game.chess.moves({ verbose: true }).some((m) => m.lan === msg.uci);
+      const legal = play.game.pos.isLegal(msg.uci);
       if (p instanceof HumanPlayer && p.waiting && legal) p.submit(msg.uci);
       else send(ws, { t: 'game', game: play.game.state() });
       break;
@@ -109,7 +130,7 @@ async function handle(ws: WebSocket, msg: ClientMsg) {
       // With two humans the side to move resigns; with no humans this just aborts.
       if (!humanWhite && !humanBlack) g.end('*', 'stopped');
       else {
-        const loser = humanWhite && humanBlack ? g.chess.turn() : humanWhite ? 'w' : 'b';
+        const loser = humanWhite && humanBlack ? g.pos.turn() : humanWhite ? 'w' : 'b';
         g.end(loser === 'w' ? '0-1' : '1-0', `${loser === 'w' ? 'White' : 'Black'} resigned`);
       }
       break;
@@ -151,6 +172,11 @@ async function startPlay(white: PlayerRef, black: PlayerRef, tc: TimeControl) {
   };
   const w = await makePlayer(white);
   const b = await makePlayer(black);
+  // An engine playing itself: tell the sides apart in names and results.
+  if (w.name === b.name) {
+    w.name += ' (White)';
+    b.name += ' (Black)';
+  }
   const game = new Game(`play-${Date.now().toString(36)}`, w, b, tc, (g) => {
     if (play?.game === g) broadcast({ t: 'game', game: g.state() });
   });
@@ -167,6 +193,14 @@ server.listen(PORT, () => {
   console.log(`chess-arena on http://localhost:${PORT}`);
   console.log(`engines dir: ${ENGINES_DIR} (${registry.list().length} found)`);
 });
+
+if (ENGINE_HOST) {
+  // Engines that need the host (e.g. macOS binaries) start working once it connects.
+  engineHost.onChange = () => {
+    registry.refresh().then((engines) => broadcast({ t: 'engines', engines }));
+  };
+  engineHost.start(ENGINE_HOST, ENGINES_DIR);
+}
 
 for (const sig of ['SIGINT', 'SIGTERM'] as const) {
   process.on(sig, () => {

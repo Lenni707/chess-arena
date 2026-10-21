@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.server.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "erasableSyntaxOnly": true
+  },
+  "include": [
+    "host"
+  ]
+}

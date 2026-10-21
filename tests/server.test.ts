@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import path from 'node:path';
 import { UciEngine } from '../server/uci.js';
-import { EnginePlayer, Game } from '../server/game.js';
+import { EnginePlayer, Game, type Player } from '../server/game.js';
+
+/** Plays the given moves in order (and only those). */
+function scripted(name: string, moves: string[]): Player {
+  return { name, ref: name, move: async () => ({ uci: moves.shift() ?? '0000' }), cancel() {} };
+}
 
 const RANDOM = { command: 'node', args: [path.resolve('tests/fixtures/random-engine.mjs')], options: {} };
 
@@ -48,4 +53,27 @@ describe('Game', () => {
     a.quit();
     b.quit();
   }, 10_000);
+});
+
+describe('Game rules (shakmaty)', () => {
+  const tc = { kind: 'movetime', ms: 100 } as const;
+
+  it('ends on checkmate with SAN', async () => {
+    const g = new Game('t', scripted('W', ['f2f3', 'g2g4']), scripted('B', ['e7e5', 'd8h4']), tc);
+    expect(await g.run()).toBe('0-1');
+    expect(g.reason).toBe('checkmate');
+    expect(g.moves.map((m) => m.san)).toEqual(['f3', 'e5', 'g4', 'Qh4#']);
+  });
+
+  it('draws on threefold repetition', async () => {
+    const g = new Game('t', scripted('W', ['g1f3', 'f3g1', 'g1f3', 'f3g1']), scripted('B', ['g8f6', 'f6g8', 'g8f6', 'f6g8']), tc);
+    expect(await g.run()).toBe('1/2-1/2');
+    expect(g.reason).toBe('threefold repetition');
+  });
+
+  it('an illegal move loses', async () => {
+    const g = new Game('t', scripted('W', ['e2e5']), scripted('B', []), tc);
+    expect(await g.run()).toBe('0-1');
+    expect(g.reason).toMatch(/illegal move \(e2e5\)/);
+  });
 });

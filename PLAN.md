@@ -17,7 +17,8 @@ The full vision also covers engines playing each other: matches with many games,
 
 ```sh
 docker compose up --build -d     # then open http://localhost:3000
-npm install && npm run dev       # without Docker, then open http://localhost:5173
+npm run engine-host              # on the Mac, for macOS engines while using Docker
+npm install && npm run dev       # without Docker (needs Rust + wasm-bindgen-cli), then open http://localhost:5173
 ```
 
 ## Screen
@@ -30,7 +31,9 @@ There is one screen. The board is on the left, with the eval bar, and player car
 - **Move list:** click a move to view that position. Buttons go to the first, previous, next and last move, and flip the board.
 - **Engines:** the list of your engines, with a status dot and the reason if one fails.
   - **Add engine** opens your file manager.
+  - Click a name to rename it (saved in `engines.json`).
   - **×** removes an engine.
+  - A `macOS` tag means the engine runs on the engine host.
   - **Rescan engines folder** looks for new files.
 
 ## Controls
@@ -53,16 +56,20 @@ You also get the last-move highlight, a red glow when a king is in check, move, 
 - Optional `engines/engines.json` sets names, arguments and UCI options:
   `[{ "name": "My Engine", "command": "my-engine/engine", "options": { "Hash": 64, "Threads": 2 } }]`
 - Each engine is checked with a `uci`/`uciok` handshake. If it fails, the list says why, for example "this is a macOS binary; inside Docker the engine needs a Linux build".
-- **Docker runs Linux.** Use Linux builds of your engines (arm64 on Apple Silicon) or script engines (Python 3 and Node are in the image). To use native macOS builds, run with `npm run dev` instead.
+- **Docker runs Linux, so macOS engines go through the engine host.** `npm run engine-host` (`host/engine-host.ts`, plain Node with no dependencies) runs on the Mac and listens on 127.0.0.1:7100. The server in the container connects to `ENGINE_HOST=host.docker.internal:7100` and keeps retrying. When the host connects or disconnects, the engines list is re-probed.
+  - Mach-O binaries are started on the host automatically. `"host": true` in `engines.json` forces any engine onto the host.
+  - Wire format: JSON lines. `hello{token}` → `ready{platform,arch}`, then `spawn{id,command,args}`, `in{id,line}`, `quit{id}` ⇄ `out{id,line}`, `exit{id,reason}`. Paths inside the engines folder are sent as `$ENGINES/…`, and the host maps them to its own folder.
+  - Safety: the host only starts files inside its engines folder (or `node`/`python3` with a script there). It requires the token in `engines/.engine-host-token`, which it creates on first start. The server rejects uploads and WebSockets whose `Origin` is a different site, so other websites can't plant and run an engine.
+- Linux builds and script engines (Python 3 and Node are in the image) run inside the container. With `npm run dev` on the Mac, everything runs natively.
 - No engines are bundled.
 
 ## How games are run
 
-- The server owns the game and checks every move with chess.js. A browser move that isn't legal is rejected, and the board resyncs.
+- The server owns the game and checks every move with shakmaty (see below). A browser move that isn't legal is rejected, and the board resyncs.
 - Engines get `position startpos moves …` and `go wtime btime winc binc`, or `go movetime` when there is no clock.
 - How a game ends:
   - checkmate, stalemate, threefold repetition, the 50-move rule, insufficient material
-  - running out of time, except it's a draw if the opponent has only a king
+  - running out of time, except it's a draw if the opponent can't checkmate (shakmaty's `has_insufficient_material`)
   - resignation
   - an engine crash, hang or illegal move, which loses for that engine
 - The eval bar uses the engine's last `info score`, converted to White's point of view.
@@ -71,7 +78,11 @@ You also get the last-move highlight, a red glow when a king is in check, move, 
 
 | Part | File |
 | --- | --- |
-| UCI process wrapper: handshake, `go` with hard time limit, score parsing, crash and wrong-OS detection | `server/uci.ts` |
+| Chess rules: shakmaty compiled to WebAssembly (`Position`: legal moves, SAN, FEN, outcome, repetition) | `core/src/lib.rs` → `core/pkg` |
+| Loads the WASM rules (server / browser) | `server/chess.ts`, `client/src/chess.ts` |
+| UCI process wrapper: handshake, `go` with hard time limit, score parsing, crash and wrong-OS detection, local vs. engine-host placement | `server/uci.ts` |
+| Link from the server to the engine host | `server/host-link.ts` |
+| Engine host (runs on the Mac) | `host/engine-host.ts` |
 | Engine discovery, `engines.json`, upload and remove | `server/engines.ts` |
 | Game, clocks, human and engine players, game-end rules | `server/game.ts` |
 | HTTP (static files, `POST /api/engines/upload`) + WebSocket `/ws` | `server/index.ts` |
@@ -80,13 +91,13 @@ You also get the last-move highlight, a red glow when a king is in check, move, 
 | Board + eval bar + clocks + move list | `client/src/views/GameView.ts` |
 | Setup panel / engines panel | `client/src/views/play.ts`, `client/src/views/engines.ts` |
 
-Stack: Node 22 + TypeScript, `ws`, `chess.js`, Vite (no UI framework), Docker (`node:22-slim` + python3). Pieces: cburnett set (GPLv2+, from lichess).
+Stack: Node 22 + TypeScript, `ws`, shakmaty 0.30 (Rust → WASM via wasm-bindgen 0.2.129, built without the `magics` tables to keep it at ~130 KB), Vite (no UI framework). Docker uses a `rust:1-slim` stage for the WASM build and `node:22-slim` + python3 to run. Pieces: cburnett set (GPLv2+, from lichess).
 
 Design: dark slate background `#171b22`, stone `#dcd8cc` and slate-blue `#7d8ba0` squares, one amber accent `#f0b44c`, Manrope font.
 
 ## Tests
 
-`npm test` runs vitest against a test-only random-move engine in `tests/fixtures/`, covering the UCI handshake, a missing binary, a full game, and losing on time. The UI was also checked in headless Chrome:
+`npm test` runs `cargo test` for `core/` (SAN/FEN, castling, checkmate, threefold, promotion, insufficient material). It then runs vitest against a test-only random-move engine in `tests/fixtures/`, covering the UCI handshake, a missing binary, a full game, losing on time, game-end rules through `Game`, and the engine host (relaying UCI, refusing files outside the engines folder). The UI was also checked in headless Chrome:
 - drag and click moves, and an illegal drop snapping back
 - playing as Black
 - resigning
