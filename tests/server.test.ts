@@ -77,3 +77,18 @@ describe('Game rules (shakmaty)', () => {
     expect(g.reason).toMatch(/illegal move \(e2e5\)/);
   });
 });
+
+describe('engine strength', () => {
+  it('reads the UCI_Elo range only when UCI_LimitStrength exists too', async () => {
+    const e = new UciEngine({ ...RANDOM, args: [...RANDOM.args] });
+    process.env.RANDOM_ENGINE_ELO = '1320-3190';
+    await e.start();
+    delete process.env.RANDOM_ENGINE_ELO;
+    expect(e.eloRange).toEqual({ min: 1320, max: 3190 });
+    e.quit();
+    const plain = new UciEngine(RANDOM);
+    await plain.start();
+    expect(plain.eloRange).toBeNull();
+    plain.quit();
+  });
+});

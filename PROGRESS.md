@@ -32,6 +32,7 @@ Handoff notes for anyone (human or model) continuing this project.
 - [x] Engine host: macOS engines while the app runs in Docker
 - [x] Engine versions (`engines/<engine>/<version>/`, "+ version" upload, auto-migration to v1)
 - [x] Match tab: 100–10,000 games, up to 200 live canvas boards, tally + Elo
+- [x] Elo strength picker for engines with UCI_Elo (Play and Match)
 - [ ] Rest of PLAN.md part 2 (only when asked)
 
 ## Log
@@ -39,3 +40,4 @@ Handoff notes for anyone (human or model) continuing this project.
 - 2026-10-21: Add engine now opens the file picker and uploads the file(s) into engines/ (`POST /api/engines/upload`). Removing an engine found by scanning deletes its file. Add-by-path was removed. Roadmap merged into the single PLAN.md. Verified the upload and remove in Docker with headless Chrome.
 - 2026-10-21: Finished engine renaming (click the name; scanned engines get an `engines.json` entry with a portable `./file` command). Replaced chess.js with shakmaty compiled to WASM (`core/`). Added the engine host so macOS binaries run from Docker. Verified in Docker: a macOS arm64 engine played through the host from the container, and in headless Chrome: legal dots, a move, the engine's reply, and renaming.
 - 2026-10-21: Engine versions, plus the Match tab with live mini boards. Verified in Docker with the user's macOS engine: an uploaded v2 moved the old file into v1, and v2 vs v1 ran 1000 games with 100 boards at once in headless Chrome (200 games in ~25 s at 20 ms/move). Stop works. The user rejected an opening book, so it was removed.
+- 2026-10-21: The user asked for Stockfish. Installed the official Stockfish 19 Linux arm64 build (sf_19 release) into the user's `engines/stockfish/19/` with its GPL `Copying.txt`. It isn't committed (`engines/` is gitignored), and it runs inside the container. Added Elo strength picking. Verified: the GUI shows Elo 1320–3190, and Stockfish at Elo 1320 lost 8/8 to full strength.

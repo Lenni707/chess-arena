@@ -464,6 +464,22 @@ select {
   display: none;
 }
 
+/* Engine dropdown with an optional strength (Elo) dropdown beside it. */
+.engine-pick {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.engine-pick select:first-child {
+  flex: 1;
+}
+
+.engine-pick select.strength {
+  width: 140px;
+  flex: none;
+}
+
 /* ---------- engine versions ---------- */
 
 .engine-list .e-family {

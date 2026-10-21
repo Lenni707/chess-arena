@@ -63,6 +63,12 @@ You also get the last-move highlight, a red glow when a king is in check, move, 
 - Linux builds and script engines (Python 3 and Node are in the image) run inside the container. With `npm run dev` on the Mac, everything runs natively.
 - No engines are bundled.
 
+## Engine strength
+
+- During the `uci` handshake, `UciEngine` reads `option name UCI_Elo … min … max …`. The range counts only if `UCI_LimitStrength` is offered too. The registry's check stores it as `EngineInfo.elo`.
+- `play.new {elo: {w?, b?}}` and `match.start {eloA?, eloB?}` choose a strength. `registry.def(engine, elo)` adds `UCI_LimitStrength=true` and `UCI_Elo=<elo>` (clamped to the range) to the engine's options. The player's name gets " (Elo N)".
+- The dropdown (`strengthSelect` in `client/src/views/engines.ts`) lists Full strength, the minimum, every 100 in between, and the maximum.
+
 ## How games are run
 
 - The server owns the game and checks every move with shakmaty (see below). A browser move that isn't legal is rejected, and the board resyncs.

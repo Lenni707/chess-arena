@@ -117,7 +117,7 @@ async function handle(ws: WebSocket, msg: ClientMsg) {
       broadcast({ t: 'engines', engines: await registry.remove(msg.id) });
       break;
     case 'play.new':
-      await startPlay(msg.white, msg.black, msg.tc);
+      await startPlay(msg.white, msg.black, msg.tc, msg.elo ?? {});
       break;
     case 'play.move': {
       if (!play || play.game.id !== msg.gameId || play.game.over) return;
@@ -170,11 +170,11 @@ function stopPlay() {
   play = null;
 }
 
-async function startPlay(white: PlayerRef, black: PlayerRef, tc: TimeControl) {
+async function startPlay(white: PlayerRef, black: PlayerRef, tc: TimeControl, elo: { w?: number; b?: number }) {
   stopPlay();
   const engines: UciEngine[] = [];
   const humans: HumanPlayer[] = [];
-  const makePlayer = async (ref: PlayerRef): Promise<Player> => {
+  const makePlayer = async (ref: PlayerRef, elo?: number): Promise<Player> => {
     if (ref === 'human') {
       const h = new HumanPlayer();
       humans.push(h);
@@ -182,7 +182,8 @@ async function startPlay(white: PlayerRef, black: PlayerRef, tc: TimeControl) {
     }
     const info = registry.get(ref);
     if (!info) throw new Error('Unknown engine');
-    const eng = new UciEngine(registry.def(info));
+    const def = registry.def(info, elo);
+    const eng = new UciEngine(def);
     engines.push(eng);
     try {
       await eng.start();
@@ -191,10 +192,10 @@ async function startPlay(white: PlayerRef, black: PlayerRef, tc: TimeControl) {
       for (const e of engines) e.quit();
       throw new Error(`${info.name} failed to start: ${(err as Error).message}`);
     }
-    return new EnginePlayer(eng, info.name, info.id);
+    return new EnginePlayer(eng, withElo(info.name, def), info.id);
   };
-  const w = await makePlayer(white);
-  const b = await makePlayer(black);
+  const w = await makePlayer(white, elo.w);
+  const b = await makePlayer(black, elo.b);
   // An engine playing itself: tell the sides apart in names and results.
   if (w.name === b.name) {
     w.name += ' (White)';
@@ -209,6 +210,11 @@ async function startPlay(white: PlayerRef, black: PlayerRef, tc: TimeControl) {
   });
 }
 
+/** "Stockfish 19 (Elo 1500)" when the engine plays at a set strength. */
+function withElo(name: string, def: { options: Record<string, unknown> }) {
+  return def.options.UCI_LimitStrength && def.options.UCI_Elo ? `${name} (Elo ${def.options.UCI_Elo})` : name;
+}
+
 // ---------- match ----------
 
 function startMatch(msg: Extract<ClientMsg, { t: 'match.start' }>) {
@@ -216,12 +222,14 @@ function startMatch(msg: Extract<ClientMsg, { t: 'match.start' }>) {
   const b = registry.get(msg.engineB);
   if (!a || !b) throw new Error('Pick two engines');
   match?.stop();
+  const defA = registry.def(a, msg.eloA);
+  const defB = registry.def(b, msg.eloB);
   const m = new Match(
     {
-      engineA: a,
-      engineB: b,
-      defA: registry.def(a),
-      defB: registry.def(b),
+      engineA: { ...a, name: withElo(a.name, defA) },
+      engineB: { ...b, name: withElo(b.name, defB) },
+      defA,
+      defB,
       games: Math.max(1, Math.min(100_000, Math.floor(msg.games))),
       tc: msg.tc,
       concurrency: Math.max(1, Math.min(500, Math.floor(msg.concurrency))),

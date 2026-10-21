@@ -20,6 +20,10 @@ Click **Add engine** and pick the engine file in your file manager. It's saved a
 
 **New versions:** click **+ version** next to an engine and pick the updated file. It's saved as `v2`, `v3`, … next to the old ones, and all versions stay playable. Uploading a file with the same name as an existing engine also adds a new version. You can also make the folders yourself (`engines/<engine>/<version>/`) and click **Rescan engines folder**.
 
+## Engine strength (Elo)
+
+Engines that can play at a set Elo (UCI options `UCI_LimitStrength` + `UCI_Elo`, e.g. Stockfish) get a strength dropdown next to them: **Full strength** or Elo values across the engine's range (Stockfish 19: 1320–3190). It's available in **Play** for your opponent and in **Match** for engine A and B separately. The chosen Elo shows in the player's name, e.g. "stockfish 19 (Elo 1500)".
+
 ## Engine vs. engine
 
 Open **Match** in the top bar, then pick engine A and engine B. By default, that's the newest version against the one before it. Then choose:

@@ -15,6 +15,12 @@ createInterface({ input: process.stdin }).on('line', (line) => {
   if (cmd === 'uci') {
     out('id name RandomMover');
     out('id author tests');
+    // RANDOM_ENGINE_ELO=min-max advertises the options for playing at a set Elo.
+    const elo = process.env.RANDOM_ENGINE_ELO?.split('-');
+    if (elo) {
+      out('option name UCI_LimitStrength type check default false');
+      out(`option name UCI_Elo type spin default ${elo[0]} min ${elo[0]} max ${elo[1]}`);
+    }
     out('uciok');
   } else if (cmd === 'isready') out('readyok');
   else if (cmd === 'position') {

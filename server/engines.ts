@@ -24,7 +24,7 @@ const SKIP = /\.(json|md|txt|nnue|bin|dll|so|dylib|pdf|png|jpg|zip|tar|gz|ini|cf
 /** Finds engines in the engines directory and keeps `engines.json` in sync. */
 export class EngineRegistry {
   private engines: EngineInfo[] = [];
-  private probeCache = new Map<string, Pick<EngineInfo, 'status' | 'error' | 'author' | 'host'> & { uciName?: string }>();
+  private probeCache = new Map<string, Pick<EngineInfo, 'status' | 'error' | 'author' | 'host' | 'elo'> & { uciName?: string }>();
   /** Engines that must run on the engine host, by id (from `engines.json`). */
   private hostOnly = new Set<string>();
 
@@ -38,8 +38,14 @@ export class EngineRegistry {
     return this.engines.find((e) => e.id === id);
   }
 
-  def(e: EngineInfo): EngineDef {
-    return { command: e.command, args: e.args, options: e.options, host: this.hostOnly.has(e.id) };
+  /** How to start the engine; with `elo`, it plays at that strength (if it supports UCI_Elo). */
+  def(e: EngineInfo, elo?: number): EngineDef {
+    const options = { ...e.options };
+    if (elo && e.elo) {
+      options.UCI_LimitStrength = true;
+      options.UCI_Elo = Math.round(Math.min(e.elo.max, Math.max(e.elo.min, elo)));
+    }
+    return { command: e.command, args: e.args, options, host: this.hostOnly.has(e.id) };
   }
 
   async refresh(): Promise<EngineInfo[]> {
@@ -235,7 +241,7 @@ export class EngineRegistry {
       try {
         await eng.start(5000);
         const host = eng.onHost ? (PLATFORMS[engineHost.platform] ?? engineHost.platform) : undefined;
-        res = { status: 'ok', author: eng.author || undefined, uciName: eng.name || undefined, host };
+        res = { status: 'ok', author: eng.author || undefined, uciName: eng.name || undefined, host, elo: eng.eloRange ?? undefined };
       } catch (err) {
         res = { status: 'error', error: (err as Error).message };
       } finally {
@@ -247,6 +253,7 @@ export class EngineRegistry {
     e.error = res.error;
     e.author = res.author;
     e.host = res.host;
+    e.elo = res.elo;
     // Versions keep "<family> <version>": all versions usually report the same UCI name.
     if (e.source === 'auto' && res.uciName && !e.version) e.name = res.uciName;
   }

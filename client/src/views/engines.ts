@@ -162,6 +162,35 @@ export function engineSelect(label: string, extra: { value: string; label: strin
   return sel;
 }
 
+/**
+ * Strength picker for the engine chosen in `engine`: "Full strength" or an Elo,
+ * shown only when that engine supports playing at a set Elo (UCI_Elo).
+ * `value()` is the chosen Elo, or undefined for full strength.
+ */
+export function strengthSelect(engine: HTMLSelectElement, label: string) {
+  const sel = h('select.strength', { 'aria-label': label });
+  let forId = '';
+  const render = () => {
+    const e = store.engines.find((x) => x.id === engine.value);
+    sel.hidden = !e?.elo;
+    if (!e?.elo || e.id === forId) return;
+    forId = e.id;
+    const { min, max } = e.elo;
+    const steps = [min];
+    for (let v = Math.ceil((min + 1) / 100) * 100; v < max; v += 100) steps.push(v);
+    steps.push(max);
+    sel.replaceChildren(
+      h('option', { value: '' }, 'Full strength'),
+      ...steps.map((v) => h('option', { value: String(v) }, `Elo ${v}`)),
+    );
+  };
+  engine.addEventListener('change', render);
+  engine.addEventListener('populated', render);
+  on('engines', render);
+  render();
+  return { el: sel, value: () => (sel.hidden || !sel.value ? undefined : Number(sel.value)) };
+}
+
 /** Row of toggle chips; returns the element and a getter for the chosen value. */
 export function chips<T>(options: { label: string; value: T }[], initial = 0, onChange?: (v: T) => void) {
   let current = options[initial].value;

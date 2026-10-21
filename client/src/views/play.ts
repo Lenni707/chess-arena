@@ -3,7 +3,7 @@ import { h } from '../dom';
 import { on, store } from '../store';
 import { conn } from '../ws';
 import { GameView } from './GameView';
-import { chips, enginesSection, engineSelect } from './engines';
+import { chips, enginesSection, engineSelect, strengthSelect } from './engines';
 
 const TIME_CONTROLS: { label: string; value: TimeControl }[] = [
   { label: '1 + 0', value: { kind: 'clock', baseMs: 60_000, incMs: 0 } },
@@ -16,6 +16,7 @@ const TIME_CONTROLS: { label: string; value: TimeControl }[] = [
 export function playView(): { el: HTMLElement; onKey: (e: KeyboardEvent) => void } {
   const view = new GameView({ sounds: true, onMove: (uci) => store.play && conn.send({ t: 'play.move', gameId: store.play.id, uci }) });
   const engine = engineSelect('Opponent');
+  const strength = strengthSelect(engine, 'Opponent strength');
   const color = chips<Color | 'random'>(
     [
       { label: 'White', value: 'w' },
@@ -41,6 +42,7 @@ export function playView(): { el: HTMLElement; onKey: (e: KeyboardEvent) => void
         white: you === 'w' ? 'human' : engine.value,
         black: you === 'b' ? 'human' : engine.value,
         tc: tc.get(),
+        elo: you === 'w' ? { b: strength.value() } : { w: strength.value() },
       });
     },
   }, 'New game');
@@ -50,7 +52,7 @@ export function playView(): { el: HTMLElement; onKey: (e: KeyboardEvent) => void
     'aside.panel',
     {},
     h('section.setup', {},
-      h('label.field', {}, h('span', {}, 'Opponent'), engine),
+      h('div.field', {}, h('span', {}, 'Opponent'), h('div.engine-pick', {}, engine, strength.el)),
       h('div.field', {}, h('span', {}, 'You play'), color.el),
       h('div.field', {}, h('span', {}, 'Time (minutes + seconds per move)'), tc.el),
       h('div.actions', {}, start, resign),

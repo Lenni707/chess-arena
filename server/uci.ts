@@ -45,6 +45,9 @@ type Waiter = { match: (line: string) => boolean; resolve: (line: string) => voi
 export class UciEngine {
   name = '';
   author = '';
+  /** Range of `UCI_Elo` when the engine can limit its strength (`UCI_LimitStrength`). */
+  eloRange: { min: number; max: number } | null = null;
+  private limitStrength = false;
   /** True when the engine runs on the engine host instead of in this process's OS. */
   onHost = false;
   private proc: EngineProcess | null = null;
@@ -72,6 +75,7 @@ export class UciEngine {
 
     this.send('uci');
     await this.waitFor((l) => l === 'uciok', timeoutMs, 'no uciok');
+    if (!this.limitStrength) this.eloRange = null;
     for (const [k, v] of Object.entries(this.def.options)) this.send(`setoption name ${k} value ${v}`);
     await this.ready(timeoutMs);
   }
@@ -124,8 +128,21 @@ export class UciEngine {
     if (line.startsWith('id name ')) this.name = line.slice(8);
     else if (line.startsWith('id author ')) this.author = line.slice(10);
     else if (line.startsWith('info ')) this.parseInfo(line);
+    else if (line.startsWith('option name ')) this.parseOption(line);
     const i = this.waiters.findIndex((w) => w.match(line));
     if (i >= 0) this.waiters.splice(i, 1)[0].resolve(line);
+  }
+
+  /** Notes the options for playing at a set Elo; others are ignored. */
+  private parseOption(line: string) {
+    const m = line.match(/^option name (.+?) type (\S+)(.*)$/);
+    if (!m) return;
+    if (m[1] === 'UCI_LimitStrength') this.limitStrength = true;
+    if (m[1] === 'UCI_Elo') {
+      const min = Number(m[3].match(/\bmin (-?\d+)/)?.[1]);
+      const max = Number(m[3].match(/\bmax (-?\d+)/)?.[1]);
+      if (min > 0 && max > min) this.eloRange = { min, max };
+    }
   }
 
   private parseInfo(line: string) {

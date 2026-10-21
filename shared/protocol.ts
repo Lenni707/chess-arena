@@ -20,6 +20,8 @@ export interface EngineInfo {
   version?: string;
   /** Name of the version within its family: the folder name, or what it was renamed to. */
   label?: string;
+  /** Elo range when the engine can play at a set strength (UCI_LimitStrength + UCI_Elo). */
+  elo?: { min: number; max: number };
   /** Set when the engine runs on the engine host instead of the server, e.g. 'macOS'. */
   host?: string;
 }
@@ -93,10 +95,11 @@ export type ClientMsg =
   | { t: 'engines.refresh' }
   | { t: 'engines.rename'; id: string; name: string }
   | { t: 'engines.remove'; id: string }
-  | { t: 'play.new'; white: PlayerRef; black: PlayerRef; tc: TimeControl }
+  /** `elo` sets an engine's strength per color; leave it out for full strength. */
+  | { t: 'play.new'; white: PlayerRef; black: PlayerRef; tc: TimeControl; elo?: { w?: number; b?: number } }
   | { t: 'play.move'; gameId: string; uci: string }
   | { t: 'play.resign'; gameId: string }
-  | { t: 'match.start'; engineA: string; engineB: string; games: number; tc: TimeControl; concurrency: number }
+  | { t: 'match.start'; engineA: string; engineB: string; eloA?: number; eloB?: number; games: number; tc: TimeControl; concurrency: number }
   | { t: 'match.stop' }
   /** Follow one board of the match in full (moves, clocks), or stop with null. */
   | { t: 'match.watch'; slot: number | null };

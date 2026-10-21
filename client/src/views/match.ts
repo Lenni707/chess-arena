@@ -4,7 +4,7 @@ import { GameView } from './GameView';
 import { parseFen, pieceImages, piecesReady, sqIndex } from '../pieces';
 import { on, store } from '../store';
 import { conn } from '../ws';
-import { chips, enginesSection, engineSelect } from './engines';
+import { chips, enginesSection, engineSelect, strengthSelect } from './engines';
 
 const GAMES = [100, 1000, 5000, 10000].map((n) => ({ label: n.toLocaleString('en'), value: n }));
 const TIME: { label: string; value: TimeControl }[] = [
@@ -40,6 +40,8 @@ function save(key: string, value: string) {
 export function matchView(): { el: HTMLElement; onKey: (e: KeyboardEvent) => void } {
   const engineA = engineSelect('Engine A');
   const engineB = engineSelect('Engine B');
+  const strengthA = strengthSelect(engineA, 'Engine A strength');
+  const strengthB = strengthSelect(engineB, 'Engine B strength');
   const games = chips(GAMES, 1);
   const time = chips(TIME, 0);
   const boards = chips(BOARDS, 2);
@@ -70,6 +72,9 @@ export function matchView(): { el: HTMLElement; onKey: (e: KeyboardEvent) => voi
     } else if (ok.length > 1 && engineB.value === engineA.value) {
       engineB.value = ok[1].id;
     }
+    // Setting .value doesn't fire 'change'; the strength pickers listen for it.
+    engineA.dispatchEvent(new Event('change'));
+    engineB.dispatchEvent(new Event('change'));
   };
   on('engines', pairVersions);
   pairVersions();
@@ -83,7 +88,7 @@ export function matchView(): { el: HTMLElement; onKey: (e: KeyboardEvent) => voi
         return;
       }
       error.textContent = '';
-      conn.send({ t: 'match.start', engineA: engineA.value, engineB: engineB.value, games: games.get(), tc: time.get(), concurrency: boards.get() });
+      conn.send({ t: 'match.start', engineA: engineA.value, engineB: engineB.value, eloA: strengthA.value(), eloB: strengthB.value(), games: games.get(), tc: time.get(), concurrency: boards.get() });
     },
   }, 'Start match');
 
@@ -92,8 +97,8 @@ export function matchView(): { el: HTMLElement; onKey: (e: KeyboardEvent) => voi
     'aside.panel',
     {},
     h('section.setup', {},
-      h('label.field', {}, h('span.a-label', {}, 'Engine A'), engineA),
-      h('label.field', {}, h('span.b-label', {}, 'Engine B'), engineB),
+      h('div.field', {}, h('span.a-label', {}, 'Engine A'), h('div.engine-pick', {}, engineA, strengthA.el)),
+      h('div.field', {}, h('span.b-label', {}, 'Engine B'), h('div.engine-pick', {}, engineB, strengthB.el)),
       h('div.field', {}, h('span', {}, 'Games'), games.el),
       h('div.field', {}, h('span', {}, 'Time per move'), time.el),
       h('div.field', {}, h('span', {}, 'Boards at once'), boards.el),
