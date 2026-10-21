@@ -33,7 +33,7 @@ show(saved === 'match' ? 'match' : 'play');
 const top = h('header.top', {}, h('div.brand', {}, h('img', { src: '/pieces/wN.svg', alt: '' }), 'Arena'), h('nav.tabs', { role: 'tablist' }, ...tabs));
 
 document.getElementById('app')!.append(top, main, offline);
-window.addEventListener('keydown', (e) => main.contains(play.el) && play.onKey(e));
+window.addEventListener('keydown', (e) => (main.contains(play.el) ? play.onKey(e) : match.onKey(e)));
 
 on('status', () => offline.classList.toggle('show', !store.connected));
 conn.connect();

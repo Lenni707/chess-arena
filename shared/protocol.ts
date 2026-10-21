@@ -97,7 +97,9 @@ export type ClientMsg =
   | { t: 'play.move'; gameId: string; uci: string }
   | { t: 'play.resign'; gameId: string }
   | { t: 'match.start'; engineA: string; engineB: string; games: number; tc: TimeControl; concurrency: number }
-  | { t: 'match.stop' };
+  | { t: 'match.stop' }
+  /** Follow one board of the match in full (moves, clocks), or stop with null. */
+  | { t: 'match.watch'; slot: number | null };
 
 export type ServerMsg =
   | { t: 'hello'; cores: number }
@@ -106,6 +108,8 @@ export type ServerMsg =
   | { t: 'match'; match: MatchSummary | null }
   /** Boards that changed and the new tally, batched every 100 ms. */
   | { t: 'match.tick'; id: string; boards: MatchBoard[]; tally: Tally; running: boolean }
+  /** Full state of the game on the watched board, on every move. */
+  | { t: 'match.game'; id: string; slot: number; game: GameState }
   | { t: 'error'; message: string };
 
 export const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';

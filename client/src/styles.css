@@ -535,6 +535,96 @@ select {
   width: var(--mb, 80px);
   height: var(--mb, 80px);
   overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.mini-board:hover {
+  outline: 2px solid var(--a);
+  outline-offset: -2px;
+  z-index: 1;
+}
+
+/* Watching one board: the stage sizes the big board like the Play tab. */
+.match-view .stage.grid-stage.watching {
+  container-type: size;
+  overflow: hidden;
+  align-items: stretch;
+}
+
+.watch {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.watch-board {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  container-type: size;
+}
+
+.watch-bar {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: none;
+}
+
+.watch-back {
+  padding: 6px 12px;
+}
+
+.watch-title {
+  color: var(--muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.match-summary {
+  width: min(520px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.summary-hint {
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+  margin: 0;
+}
+
+.score.big {
+  gap: 10px;
+}
+
+.score.big .sc-names {
+  font-size: 18px;
+}
+
+.score.big .sc-nums {
+  font-size: 88px;
+}
+
+.score.big .sc-labels {
+  font-size: 13px;
+}
+
+.score.big .sc-bar {
+  height: 14px;
+}
+
+.score.big .sc-stats {
+  font-size: 14px;
+  text-align: center;
 }
 
 .mini-board canvas {

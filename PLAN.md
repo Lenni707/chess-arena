@@ -122,12 +122,13 @@ Design: dark slate background `#171b22`, stone `#dcd8cc` and slate-blue `#7d8ba0
 - **Grid:** one `<canvas>` per board. A board redraws only when its position changes, in one `requestAnimationFrame` pass with the device pixel ratio capped at 2. Boards always form one full rectangle: the column count divides the board count (100 → 10×10, 200 → 20×10), packed with 2–3 px gaps in one framed box, sized to fit the screen (minimum 40 px, then it scrolls).
   - A finished game tints the board in the winner's color. When the next game starts, the old result flashes.
   - Updates are batched by the server every 100 ms (`match.tick` with only the changed boards).
+- **Live boards Show/Hide** (saved in localStorage). Hidden: the stage shows a big score card, and the grid stops drawing.
+- **Watch one board:** clicking a mini board sends `match.watch {slot}`. The server then sends `match.game {slot, game}` (full `GameState`) on every move of that board's game, to that browser only. The big board + move list follow the slot across its games. Esc / "← All boards" sends `match.watch {slot: null}`.
 - **Score:** A wins / draws / B wins, a stacked bar, A's score, and the Elo difference ± 95%, shown from 10 games on. Score `s = (W + D/2)/N`, `elo = −400·log10(1/s − 1)`, and the error comes from the per-game score variance.
 
 ## Not built yet
 
 - Engine vs. engine as a single game on the big board (the server's `play.new` already accepts two engine ids).
-- Click a mini board to follow that game on the big board, with its move list.
 - A results list per game, PGN download, and saving match results to disk.
 - Opening variety (book lines). The user doesn't want this for now.
 

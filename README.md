@@ -29,6 +29,9 @@ Open **Match** in the top bar, then pick engine A and engine B. By default, that
 
 Every running game is a live mini board. A board flashes the result in A's color (amber), B's color (blue) or grey for a draw, then starts its next game. Colors swap every game. The panel shows A wins / draws / B wins, A's score and the Elo difference with a 95% margin.
 
+- **Live boards: Hide** turns off the grid and shows only the big score, which is lighter when running thousands of games.
+- **Click any small board** to watch that game large, with clocks, eval and move list. ← → step through its moves. **← All boards** or Esc goes back. The big board follows that board, so when its game ends it continues with that board's next game.
+
 Every game starts from the normal starting position. An engine that always plays the same move in the same position plays the same game every time.
 
 - Executables, `*.py` and `*.js` files (top level or one folder deep) are found automatically. The engine runs with its own folder as the working directory, so NNUE files next to it load.

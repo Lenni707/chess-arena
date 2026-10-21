@@ -21,6 +21,8 @@ const registry = new EngineRegistry(ENGINES_DIR);
 
 let play: { game: Game; engines: UciEngine[]; human: HumanPlayer[] } | null = null;
 let match: Match | null = null;
+/** Which match board each browser is watching in full. */
+const watching = new Map<WebSocket, number>();
 
 // ---------- static files ----------
 
@@ -99,6 +101,7 @@ wss.on('connection', (ws) => {
     }
     handle(ws, msg).catch((err) => send(ws, { t: 'error', message: (err as Error).message }));
   });
+  ws.on('close', () => watching.delete(ws));
 });
 
 async function handle(ws: WebSocket, msg: ClientMsg) {
@@ -131,6 +134,16 @@ async function handle(ws: WebSocket, msg: ClientMsg) {
     case 'match.stop':
       match?.stop();
       break;
+    case 'match.watch': {
+      if (msg.slot === null) {
+        watching.delete(ws);
+        break;
+      }
+      watching.set(ws, msg.slot);
+      const g = match?.current[msg.slot];
+      if (match && g) send(ws, { t: 'match.game', id: match.id, slot: msg.slot, game: g.state() });
+      break;
+    }
     case 'play.resign': {
       if (!play || play.game.id !== msg.gameId) return;
       const g = play.game;
@@ -215,6 +228,15 @@ function startMatch(msg: Extract<ClientMsg, { t: 'match.start' }>) {
     },
     (t) => {
       if (match === m) broadcast({ t: 'match.tick', id: m.id, ...t });
+    },
+    (slot, g) => {
+      if (match !== m) return;
+      let data = '';
+      for (const [ws, s] of watching) {
+        if (s !== slot || ws.readyState !== WebSocket.OPEN) continue;
+        data ||= JSON.stringify({ t: 'match.game', id: m.id, slot, game: g.state() } satisfies ServerMsg);
+        ws.send(data);
+      }
     },
   );
   match = m;

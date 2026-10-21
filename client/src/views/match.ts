@@ -1,5 +1,6 @@
-import type { MatchBoard, Result, Tally, TimeControl } from '../../../shared/protocol';
+import type { GameState, MatchBoard, Result, Tally, TimeControl } from '../../../shared/protocol';
 import { h } from '../dom';
+import { GameView } from './GameView';
 import { parseFen, pieceImages, piecesReady, sqIndex } from '../pieces';
 import { on, store } from '../store';
 import { conn } from '../ws';
@@ -18,13 +19,41 @@ const LIGHT = '#dcd8cc';
 const DARK = '#7d8ba0';
 const LAST = 'rgba(240, 180, 76, 0.45)';
 
-/** Engine vs. engine: N games, many at once, each live on a small board. */
-export function matchView(): { el: HTMLElement } {
+function load(key: string) {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function save(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {}
+}
+
+/**
+ * Engine vs. engine: N games, many at once, each live on a small board. The
+ * boards can be hidden (just the score), and clicking one shows it large.
+ */
+export function matchView(): { el: HTMLElement; onKey: (e: KeyboardEvent) => void } {
   const engineA = engineSelect('Engine A');
   const engineB = engineSelect('Engine B');
   const games = chips(GAMES, 1);
   const time = chips(TIME, 0);
   const boards = chips(BOARDS, 2);
+  const showBoards = chips(
+    [
+      { label: 'Show', value: true },
+      { label: 'Hide', value: false },
+    ],
+    load('match.boards') === 'hide' ? 1 : 0,
+    (v) => {
+      save('match.boards', v ? 'show' : 'hide');
+      render();
+    },
+  );
   const error = h('p.form-error', { role: 'alert' });
 
   // Default pairing: the newest version of an engine against the one before it.
@@ -68,6 +97,7 @@ export function matchView(): { el: HTMLElement } {
       h('div.field', {}, h('span', {}, 'Games'), games.el),
       h('div.field', {}, h('span', {}, 'Time per move'), time.el),
       h('div.field', {}, h('span', {}, 'Boards at once'), boards.el),
+      h('div.field', {}, h('span', {}, 'Live boards'), showBoards.el),
       h('div.actions', {}, start),
       error,
     ),
@@ -75,26 +105,90 @@ export function matchView(): { el: HTMLElement } {
     enginesSection(),
   );
 
-  const grid = new BoardGrid();
-  const el = h('div.play.match-view', {}, h('div.stage.grid-stage', {}, grid.el), panel);
+  // ---- stage: the grid, the score alone (boards hidden), or one board watched large ----
+  const grid = new BoardGrid((slot) => watch(slot));
+  const bigScore = scoreCard();
+  bigScore.el.classList.add('big');
+  const summary = h('div.match-summary', {}, bigScore.el, h('p.summary-hint', {}, 'Live boards are hidden. Turn them on under “Live boards”.'));
+  const empty = h('p.summary-hint', {}, 'Pick two engines (or two versions of one) and start a match.');
+
+  const view = new GameView();
+  const watchTitle = h('span.watch-title');
+  const back = h('button.btn.ghost.watch-back', { type: 'button', onclick: () => watch(null) }, '← All boards');
+  const watchEl = h('div.watch', {}, h('div.watch-bar', {}, back, watchTitle), h('div.watch-board', {}, view.el));
+  const movesCard = h('section.moves-card', { hidden: true }, view.movesEl, view.navEl);
+  panel.insertBefore(movesCard, score.el.nextSibling);
+  let watched: number | null = null;
+
+  const stage = h('div.stage.grid-stage');
+  const el = h('div.play.match-view', {}, stage, panel);
+  new ResizeObserver(() => grid.layout()).observe(stage);
+
+  function watch(slot: number | null) {
+    watched = slot;
+    conn.send({ t: 'match.watch', slot });
+    if (slot === null) view.setGame(null);
+    render();
+  }
+
+  function render() {
+    const m = store.match;
+    const mode = watched !== null && m ? 'watch' : !m ? 'empty' : showBoards.get() ? 'grid' : 'summary';
+    const child = { watch: watchEl, empty, grid: grid.el, summary }[mode];
+    if (stage.firstChild !== child) stage.replaceChildren(child);
+    stage.classList.toggle('watching', mode === 'watch');
+    movesCard.hidden = mode !== 'watch';
+    // The big score in the stage replaces the panel's while the boards are hidden.
+    score.el.hidden = mode === 'empty' || mode === 'summary';
+    bigScore.el.hidden = false;
+    grid.setActive(mode === 'grid');
+    if (mode === 'watch') {
+      const b = m!.boards[watched!];
+      watchTitle.textContent = b && b.game >= 0 ? `Board ${b.slot + 1} · game ${b.game + 1} of ${m!.games.toLocaleString('en')}` : `Board ${watched! + 1}`;
+    }
+  }
+
+  on('match.game', (msg: { slot: number; game: GameState }) => {
+    if (msg.slot !== watched) return;
+    view.setGame(msg.game);
+    render();
+  });
 
   const sync = () => {
     const m = store.match;
     start.textContent = m?.running ? 'Stop' : 'Start match';
     start.classList.toggle('stop', !!m?.running);
     score.update();
+    bigScore.update();
     grid.setBoards(m?.boards ?? []);
+    if (watched !== null && (!m || watched >= m.boards.length)) watch(null);
+    render();
   };
   on('match', sync);
   on('match.tick', (changed: MatchBoard[]) => {
     start.textContent = store.match?.running ? 'Stop' : 'Start match';
     start.classList.toggle('stop', !!store.match?.running);
     score.update();
+    bigScore.update();
     grid.update(changed);
+    if (watched !== null && changed.some((b) => b.slot === watched)) render();
   });
   on('error', (msg: string) => (error.textContent = msg));
   sync();
-  return { el };
+
+  const onKey = (e: KeyboardEvent) => {
+    if (watched === null || e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
+    const cur = view.ply ?? (view.game?.moves.length ?? 0);
+    if (e.key === 'Escape') watch(null);
+    else if (e.key === 'ArrowLeft') view.go(cur - 1);
+    else if (e.key === 'ArrowRight') view.go(cur + 1);
+    else if (e.key === 'ArrowUp' || e.key === 'Home') view.go(0);
+    else if (e.key === 'ArrowDown' || e.key === 'End') view.go(null);
+    else if (e.key === 'f' || e.key === 'F') view.flip();
+    else return;
+    e.preventDefault();
+  };
+  return { el, onKey };
 }
 
 /** Wins of A, draws, wins of B, a bar of the three, and the Elo difference. */
@@ -119,7 +213,6 @@ function scoreCard() {
   );
   const update = () => {
     const m = store.match;
-    el.hidden = !m;
     if (!m) return;
     const t = m.tally;
     nameA.textContent = m.engineA.name;
@@ -167,10 +260,10 @@ class BoardGrid {
   private dirty = new Set<number>();
   private frame = 0;
   private size = 0;
+  private active = true;
 
-  constructor() {
+  constructor(private onPick: (slot: number) => void) {
     // Observe the stage, not the grid: the grid's own size follows from the layout.
-    queueMicrotask(() => new ResizeObserver(() => this.layout()).observe(this.el.parentElement!));
     piecesReady.then(() => this.cells.forEach((_, i) => this.mark(i)));
   }
 
@@ -179,12 +272,24 @@ class BoardGrid {
       this.cells = boards.map(() => {
         const canvas = h('canvas');
         const flash = h('span.mb-flash');
-        return { el: h('div.mini-board', {}, canvas, flash), canvas, flash, board: null, drawn: '' };
+        const el = h('button.mini-board', { type: 'button' }, canvas, flash);
+        return { el, canvas, flash, board: null, drawn: '' };
       });
+      this.cells.forEach((c, slot) => c.el.addEventListener('click', () => this.onPick(slot)));
       this.el.replaceChildren(...this.cells.map((c) => c.el));
       this.layout();
     }
     this.update(boards);
+  }
+
+  /** Inactive (not on screen): keep the latest positions but don't draw or animate. */
+  setActive(active: boolean) {
+    if (active === this.active) return;
+    this.active = active;
+    if (active) {
+      this.layout();
+      this.cells.forEach((_, i) => this.mark(i));
+    }
   }
 
   update(boards: MatchBoard[]) {
@@ -194,10 +299,10 @@ class BoardGrid {
       const prev = cell.board;
       cell.board = b;
       // A new game started in this slot: flash how the previous one ended.
-      if (prev && prev.game !== b.game && b.last !== '*') this.flash(cell, b.last, b.lastAWhite);
+      if (this.active && prev && prev.game !== b.game && b.last !== '*') this.flash(cell, b.last, b.lastAWhite);
       cell.el.classList.toggle('done', b.result !== '*');
       cell.el.dataset.result = b.result === '*' ? '' : winner(b.result, b.aWhite);
-      cell.el.title = b.game < 0 ? '' : `Game ${b.game + 1}: ${b.aWhite ? 'A' : 'B'} has White${b.result !== '*' ? ` · ${b.result}` : ''}`;
+      cell.el.title = b.game < 0 ? 'Click to watch' : `Game ${b.game + 1}: ${b.aWhite ? 'A' : 'B'} has White${b.result !== '*' ? ` · ${b.result}` : ''} · click to watch`;
       this.mark(b.slot);
     }
   }
@@ -214,9 +319,9 @@ class BoardGrid {
    * Fit all boards into the stage as one full rectangle: the column count must
    * divide the number of boards (100 → 10 × 10), so no row is left half empty.
    */
-  private layout() {
+  layout() {
     const n = this.cells.length;
-    if (!n) return;
+    if (!n || !this.active || !this.el.isConnected) return;
     const gap = n > 64 ? 2 : 3;
     const stage = this.el.parentElement!;
     const w = stage.clientWidth - 40;
@@ -249,6 +354,7 @@ class BoardGrid {
   }
 
   private mark(i: number) {
+    if (!this.active) return;
     this.dirty.add(i);
     if (!this.frame) this.frame = requestAnimationFrame(() => this.draw());
   }

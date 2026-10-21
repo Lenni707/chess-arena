@@ -30,6 +30,8 @@ const TICK_MS = 100;
 export class Match {
   readonly id = Math.random().toString(36).slice(2, 10);
   readonly boards: MatchBoard[];
+  /** The game each board plays now (or played last). */
+  readonly current: (Game | null)[];
   readonly tally: Tally;
   running = true;
   private next = 0;
@@ -42,9 +44,11 @@ export class Match {
   constructor(
     readonly opts: MatchOptions,
     private onTick: (t: MatchTick) => void,
+    private onGameUpdate: (slot: number, g: Game) => void = () => {},
   ) {
     const slots = Math.max(1, Math.min(opts.concurrency, opts.games));
     this.boards = Array.from({ length: slots }, (_, slot) => ({ slot, game: -1, fen: START_FEN, lm: '', aWhite: true, result: '*', last: '*', lastAWhite: true }));
+    this.current = this.boards.map(() => null);
     this.tally = { aWins: 0, bWins: 0, draws: 0, done: 0, total: opts.games };
     this.timer = setInterval(() => this.flush(), TICK_MS);
   }
@@ -120,7 +124,9 @@ export class Match {
           board.fen = g.pos.fen();
           board.lm = g.lastMove;
           this.dirty.add(board.slot);
+          this.onGameUpdate(board.slot, g);
         });
+        this.current[board.slot] = game;
         this.live.add(game);
         await game.run();
         this.live.delete(game);

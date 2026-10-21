@@ -1,7 +1,7 @@
 import type { EngineInfo, GameState, MatchBoard, MatchSummary } from '../../shared/protocol';
 import { conn } from './ws';
 
-type Key = 'engines' | 'play' | 'status' | 'error' | 'match' | 'match.tick';
+type Key = 'engines' | 'play' | 'status' | 'error' | 'match' | 'match.tick' | 'match.game';
 
 /** App-wide state fed by the server. Views subscribe to the keys they care about. */
 export const store = {
@@ -58,6 +58,9 @@ conn.on((msg) => {
       emit('match.tick', msg.boards as MatchBoard[]);
       break;
     }
+    case 'match.game':
+      if (store.match?.id === msg.id) emit('match.game', msg);
+      break;
     case 'error':
       store.lastError = msg.message;
       emit('error', msg.message);
