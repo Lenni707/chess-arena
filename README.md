@@ -27,8 +27,8 @@ Engines that can play at a set Elo (UCI options `UCI_LimitStrength` + `UCI_Elo`,
 ## Engine vs. engine
 
 Open **Match** in the top bar, then pick engine A and engine B. Pick **1** under Games to watch a single engine-vs-engine game on the big board (engine A has White). By default, that's the newest version against the one before it. Then choose:
-- the number of games (100 to 10,000)
-- the time per move
+- the number of games (1, 100, 1,000, 5,000, 10,000, or any number in **Custom**)
+- the time per move: 20 ms, 100 ms, 1 s, 10+0.1, or **∞**. ∞ means no clock: each engine searches as deep as it wants. Engines with their own fixed depth use it; Stockfish stops at depth 16, about a second per move.
 - how many boards play at once (16 to 200)
 
 A match runs any number of games on screen, but each engine only gets one process per two CPU cores. Games share those processes move by move, so 100 boards don't need 200 engine processes. Memory stays bounded, and every move is calculated with a full CPU core. A game's clock only runs while its engine is actually thinking.

@@ -191,7 +191,7 @@ export function strengthSelect(engine: HTMLSelectElement, label: string) {
   return { el: sel, value: () => (sel.hidden || !sel.value ? undefined : Number(sel.value)) };
 }
 
-/** Row of toggle chips; returns the element and a getter for the chosen value. */
+/** Row of toggle chips; returns the element, a getter for the chosen value, and `clear()` to unselect all. */
 export function chips<T>(options: { label: string; value: T }[], initial = 0, onChange?: (v: T) => void) {
   let current = options[initial].value;
   const el = h('div.chips', { role: 'radiogroup' });
@@ -212,5 +212,6 @@ export function chips<T>(options: { label: string; value: T }[], initial = 0, on
     ),
   );
   el.append(...buttons);
-  return { el, get: () => current };
+  const clear = () => buttons.forEach((b) => b.setAttribute('aria-checked', 'false'));
+  return { el, get: () => current, clear };
 }

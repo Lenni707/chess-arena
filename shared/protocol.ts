@@ -28,7 +28,9 @@ export interface EngineInfo {
 
 export type TimeControl =
   | { kind: 'clock'; baseMs: number; incMs: number }
-  | { kind: 'movetime'; ms: number };
+  | { kind: 'movetime'; ms: number }
+  /** No clock: every move is a search to this depth (engines with their own fixed depth use that). */
+  | { kind: 'depth'; depth: number };
 
 /** 'human' or an engine id. */
 export type PlayerRef = string;

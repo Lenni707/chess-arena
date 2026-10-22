@@ -7,11 +7,17 @@ import { conn } from '../ws';
 import { chips, enginesSection, engineSelect, strengthSelect } from './engines';
 
 const GAMES = [1, 100, 1000, 5000, 10000].map((n) => ({ label: n.toLocaleString('en'), value: n }));
+/**
+ * "∞": no clock. Engines with their own fixed depth ignore this; Stockfish needs
+ * some limit, and depth 16 takes under a second per move on one core.
+ */
+const NO_LIMIT_DEPTH = 16;
 const TIME: { label: string; value: TimeControl }[] = [
   { label: '20 ms', value: { kind: 'movetime', ms: 20 } },
   { label: '100 ms', value: { kind: 'movetime', ms: 100 } },
   { label: '1 s', value: { kind: 'movetime', ms: 1000 } },
   { label: '10 + 0.1', value: { kind: 'clock', baseMs: 10_000, incMs: 100 } },
+  { label: '∞', value: { kind: 'depth', depth: NO_LIMIT_DEPTH } },
 ];
 const BOARDS = [16, 64, 100, 200].map((n) => ({ label: String(n), value: n }));
 
@@ -42,8 +48,26 @@ export function matchView(): { el: HTMLElement; onKey: (e: KeyboardEvent) => voi
   const engineB = engineSelect('Engine B');
   const strengthA = strengthSelect(engineA, 'Engine A strength');
   const strengthB = strengthSelect(engineB, 'Engine B strength');
-  const games = chips(GAMES, 2, () => idleLabel());
-  const time = chips(TIME, 0);
+  const games = chips(GAMES, 2, () => {
+    customGames.value = '';
+    idleLabel();
+  });
+  // Any other number of games: typing here unselects the chips.
+  const customGames = h('input.custom-games', { type: 'number', min: 1, max: 100000, step: 1, placeholder: 'Custom', 'aria-label': 'Custom number of games' });
+  customGames.addEventListener('input', () => {
+    if (customGames.value) games.clear();
+    idleLabel();
+  });
+  const gameCount = () => {
+    const n = Math.floor(Number(customGames.value));
+    return customGames.value && n >= 1 ? Math.min(n, 100000) : games.get();
+  };
+  const time = chips(TIME, 0, (tc) => (timeHint.hidden = tc.kind !== 'depth'));
+  const timeHint = h(
+    'p.field-hint',
+    { hidden: true },
+    `No clock: each engine searches as deep as it wants. Engines that need a limit, like Stockfish, stop at depth ${NO_LIMIT_DEPTH} (about a second per move).`,
+  );
   const boards = chips(BOARDS, 2);
   const showBoards = chips(
     [
@@ -88,7 +112,7 @@ export function matchView(): { el: HTMLElement; onKey: (e: KeyboardEvent) => voi
         return;
       }
       error.textContent = '';
-      conn.send({ t: 'match.start', engineA: engineA.value, engineB: engineB.value, eloA: strengthA.value(), eloB: strengthB.value(), games: games.get(), tc: time.get(), concurrency: boards.get() });
+      conn.send({ t: 'match.start', engineA: engineA.value, engineB: engineB.value, eloA: strengthA.value(), eloB: strengthB.value(), games: gameCount(), tc: time.get(), concurrency: boards.get() });
     },
   }, 'Start match');
 
@@ -100,8 +124,8 @@ export function matchView(): { el: HTMLElement; onKey: (e: KeyboardEvent) => voi
     h('section.setup', {},
       h('div.field', {}, h('span.a-label', {}, 'Engine A'), h('div.engine-pick', {}, engineA, strengthA.el)),
       h('div.field', {}, h('span.b-label', {}, 'Engine B'), h('div.engine-pick', {}, engineB, strengthB.el)),
-      h('div.field', {}, h('span', {}, 'Games'), games.el),
-      h('div.field', {}, h('span', {}, 'Time per move'), time.el),
+      h('div.field', {}, h('span', {}, 'Games'), h('div.games-pick', {}, games.el, customGames)),
+      h('div.field', {}, h('span', {}, 'Time per move'), time.el, timeHint),
       h('div.field', {}, h('span', {}, 'Boards at once'), boards.el),
       h('div.field', {}, h('span', {}, 'Live boards'), showBoards.el),
       h('div.actions', {}, start),
@@ -130,7 +154,7 @@ export function matchView(): { el: HTMLElement; onKey: (e: KeyboardEvent) => voi
   /** A one-game match: shown straight on the big board, without the grid. */
   const single = () => store.match?.games === 1;
   const idleLabel = () => {
-    if (!store.match?.running) start.textContent = games.get() === 1 ? 'Start game' : 'Start match';
+    if (!store.match?.running) start.textContent = gameCount() === 1 ? 'Start game' : 'Start match';
   };
 
   const stage = h('div.stage.grid-stage');

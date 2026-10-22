@@ -122,7 +122,8 @@ Design: dark slate background `#171b22`, stone `#dcd8cc` and slate-blue `#7d8ba0
   - The list groups versions under their engine, newest first, marked "latest".
   - Renaming a version changes its label (`engines.json` `name`). Removing a version deletes its folder.
 - **Matches** (`server/match.ts`, the **Match** tab, `client/src/views/match.ts`).
-  - Settings: engine A vs. B; 100–10,000 games; 20 ms / 100 ms / 1 s per move or 10+0.1; 16–200 boards at once.
+  - Settings: engine A vs. B; 1 / 100 / 1,000 / 5,000 / 10,000 games or a custom number (1–100,000); 20 ms / 100 ms / 1 s per move, 10+0.1, or ∞; 16–200 boards at once.
+  - ∞ is the time control `{kind: 'depth', depth: 16}`: no clock, the engine gets `go depth 16`. Engines with their own fixed depth ignore it. Depth 16 keeps Stockfish under ~1 s per move on one core (measured: 14 → 0.5 s, 16 → 0.8 s, 18 → 1.5 s, 20 → 2.1 s). A search counts as hung after 5 minutes.
   - Each board is a slot that plays games one after another. Boards don't own engine processes. Each engine has one **pool** (`server/pool.ts`) of `floor(cores / 2)` processes, and a game borrows an idle process for each move. At most one search runs per core, memory is bounded by the pool size, and results are accurate.
     - Why: with a process pair per board, a stress test (100 boards, Stockfish vs. Stockfish, 300 games at 20 ms, 8 GB Docker VM) used all the memory. Only 43 of 300 games ended normally (120 failed to start, 124 lost on time because the engine hung, 13 crashes).
     - The clock starts when the borrowed process gets `go` (the `started` callback in `MoveRequest`), not while the game waits for a free process.

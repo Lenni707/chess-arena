@@ -656,6 +656,37 @@ select {
   font-size: 13px;
 }
 
+.games-pick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.games-pick .chips {
+  display: contents;
+}
+
+input.custom-games {
+  width: 92px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 13px;
+  min-width: 0;
+}
+
+input.custom-games:not(:placeholder-shown) {
+  border-color: var(--a);
+}
+
+.field-hint {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--faint);
+}
+
 .pool-note {
   margin: 0;
   font-size: 12px;
@@ -852,6 +883,37 @@ select {
 .score.big .sc-ends {
   justify-content: center;
   font-size: 13px;
+}
+
+.games-pick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.games-pick .chips {
+  display: contents;
+}
+
+input.custom-games {
+  width: 92px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 13px;
+  min-width: 0;
+}
+
+input.custom-games:not(:placeholder-shown) {
+  border-color: var(--a);
+}
+
+.field-hint {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--faint);
 }
 
 .pool-note {

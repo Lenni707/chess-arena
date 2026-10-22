@@ -26,6 +26,8 @@ export interface Player {
 
 /** Hang allowance on top of the clock before an engine is declared lost. */
 const HANG_MS = 1500;
+/** With no time limit, a search that takes longer than this counts as hung. */
+const NO_LIMIT_HANG_MS = 5 * 60_000;
 /** Over-use of the clock tolerated before flagging (process + IPC overhead). */
 const TIME_MARGIN_MS = 30;
 
@@ -36,6 +38,10 @@ export class EnginePlayer implements Player {
   }
 
   async move(req: MoveRequest) {
+    if (req.tc.kind === 'depth') {
+      // No time limit; the hard limit only catches an engine that hangs.
+      return this.toResult(await this.engine.go('startpos', req.moves, { depth: req.tc.depth }, NO_LIMIT_HANG_MS, req.started));
+    }
     if (req.tc.kind === 'movetime') {
       return this.toResult(await this.engine.go('startpos', req.moves, { movetime: req.tc.ms }, req.tc.ms + 5000, req.started));
     }

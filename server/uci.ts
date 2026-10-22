@@ -35,6 +35,7 @@ export interface GoLimits {
   winc?: number;
   binc?: number;
   movetime?: number;
+  depth?: number;
 }
 
 export class EngineError extends Error {}
