@@ -55,6 +55,7 @@ conn.on((msg) => {
       for (const b of msg.boards) m.boards[b.slot] = b;
       m.tally = msg.tally;
       m.running = msg.running;
+      m.error = msg.error;
       emit('match.tick', msg.boards as MatchBoard[]);
       break;
     }

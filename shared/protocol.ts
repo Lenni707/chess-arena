@@ -77,6 +77,8 @@ export interface Tally {
   draws: number;
   done: number;
   total: number;
+  /** How games ended: 'checkmate', 'time', 'crash', … → count. */
+  ends: Record<string, number>;
 }
 
 export interface MatchSummary {
@@ -89,6 +91,10 @@ export interface MatchSummary {
   running: boolean;
   boards: MatchBoard[];
   tally: Tally;
+  /** Why the match stopped early (e.g. an engine that can't start). */
+  error?: string;
+  /** Engine processes per engine; at most this many moves per engine are computed at once. */
+  poolSize: number;
 }
 
 export type ClientMsg =
@@ -110,7 +116,7 @@ export type ServerMsg =
   | { t: 'game'; game: GameState }
   | { t: 'match'; match: MatchSummary | null }
   /** Boards that changed and the new tally, batched every 100 ms. */
-  | { t: 'match.tick'; id: string; boards: MatchBoard[]; tally: Tally; running: boolean }
+  | { t: 'match.tick'; id: string; boards: MatchBoard[]; tally: Tally; running: boolean; error?: string }
   /** Full state of the game on the watched board, on every move. */
   | { t: 'match.game'; id: string; slot: number; game: GameState }
   | { t: 'error'; message: string };

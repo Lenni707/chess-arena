@@ -1,7 +1,8 @@
 import type { Color, GameState, MoveRecord, Result, TimeControl } from '../shared/protocol.js';
 import { START_FEN } from '../shared/protocol.js';
 import { Position } from './chess.js';
-import { EngineError, UciEngine, type SearchInfo } from './uci.js';
+import { EngineError, type SearchInfo } from './uci.js';
+import type { Searcher } from './pool.js';
 
 export interface MoveRequest {
   moves: string[];
@@ -10,6 +11,8 @@ export interface MoveRequest {
   wtime: number;
   btime: number;
   tc: TimeControl;
+  /** The player calls this when it really starts thinking; the clock runs from then. */
+  started?: () => void;
 }
 
 export interface Player {
@@ -28,13 +31,13 @@ const TIME_MARGIN_MS = 30;
 
 export class EnginePlayer implements Player {
   ref: string;
-  constructor(readonly engine: UciEngine, public name: string, ref: string) {
+  constructor(readonly engine: Searcher, public name: string, ref: string) {
     this.ref = ref;
   }
 
   async move(req: MoveRequest) {
     if (req.tc.kind === 'movetime') {
-      return this.toResult(await this.engine.go('startpos', req.moves, { movetime: req.tc.ms }, req.tc.ms + 5000));
+      return this.toResult(await this.engine.go('startpos', req.moves, { movetime: req.tc.ms }, req.tc.ms + 5000, req.started));
     }
     const own = req.color === 'w' ? req.wtime : req.btime;
     const res = await this.engine.go(
@@ -42,6 +45,7 @@ export class EnginePlayer implements Player {
       req.moves,
       { wtime: req.wtime, btime: req.btime, winc: req.tc.incMs, binc: req.tc.incMs },
       own + HANG_MS,
+      req.started,
     );
     return this.toResult(res);
   }
@@ -144,7 +148,9 @@ export class Game {
       }
       let res: { uci: string; info?: SearchInfo };
       try {
-        res = await player.move({ moves: [...this.uci], color, wtime: this.clock.w, btime: this.clock.b, tc: this.tc });
+        // A pooled engine may wait for a free process first; the clock starts when it thinks.
+        const started = () => (this.turnStart = Date.now());
+        res = await player.move({ moves: [...this.uci], color, wtime: this.clock.w, btime: this.clock.b, tc: this.tc, started });
       } catch (err) {
         if (this.over || this.stopped) break;
         const msg = (err as Error).message;

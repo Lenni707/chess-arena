@@ -26,10 +26,12 @@ Engines that can play at a set Elo (UCI options `UCI_LimitStrength` + `UCI_Elo`,
 
 ## Engine vs. engine
 
-Open **Match** in the top bar, then pick engine A and engine B. By default, that's the newest version against the one before it. Then choose:
+Open **Match** in the top bar, then pick engine A and engine B. Pick **1** under Games to watch a single engine-vs-engine game on the big board (engine A has White). By default, that's the newest version against the one before it. Then choose:
 - the number of games (100 to 10,000)
 - the time per move
 - how many boards play at once (16 to 200)
+
+A match runs any number of games on screen, but each engine only gets one process per two CPU cores. Games share those processes move by move, so 100 boards don't need 200 engine processes. Memory stays bounded, and every move is calculated with a full CPU core. A game's clock only runs while its engine is actually thinking.
 
 Every running game is a live mini board. A board flashes the result in A's color (amber), B's color (blue) or grey for a draw, then starts its next game. Colors swap every game. The panel shows A wins / draws / B wins, A's score and the Elo difference with a 95% margin.
 

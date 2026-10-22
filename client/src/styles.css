@@ -638,7 +638,35 @@ select {
   height: 14px;
 }
 
-.score.big .sc-stats {
+.score.big .sc-ends {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-size: 12px;
+  color: var(--faint);
+}
+
+.sc-end.bad {
+  color: var(--danger);
+}
+
+.score.big .sc-ends {
+  justify-content: center;
+  font-size: 13px;
+}
+
+.pool-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--faint);
+}
+
+.pool-note:empty {
+  display: none;
+}
+
+.sc-stats {
   font-size: 14px;
   text-align: center;
 }
@@ -806,6 +834,34 @@ select {
 
 .sc-bar .b {
   background: var(--b);
+}
+
+.sc-ends {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-size: 12px;
+  color: var(--faint);
+}
+
+.sc-end.bad {
+  color: var(--danger);
+}
+
+.score.big .sc-ends {
+  justify-content: center;
+  font-size: 13px;
+}
+
+.pool-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--faint);
+}
+
+.pool-note:empty {
+  display: none;
 }
 
 .sc-stats {

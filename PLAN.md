@@ -123,7 +123,12 @@ Design: dark slate background `#171b22`, stone `#dcd8cc` and slate-blue `#7d8ba0
   - Renaming a version changes its label (`engines.json` `name`). Removing a version deletes its folder.
 - **Matches** (`server/match.ts`, the **Match** tab, `client/src/views/match.ts`).
   - Settings: engine A vs. B; 100–10,000 games; 20 ms / 100 ms / 1 s per move or 10+0.1; 16–200 boards at once.
-  - Each board is a slot that plays games one after another and keeps one process per engine (`stop` + `ucinewgame` + `isready` between games). A dead engine is restarted, and an engine that can't start loses that game.
+  - Each board is a slot that plays games one after another. Boards don't own engine processes. Each engine has one **pool** (`server/pool.ts`) of `floor(cores / 2)` processes, and a game borrows an idle process for each move. At most one search runs per core, memory is bounded by the pool size, and results are accurate.
+    - Why: with a process pair per board, a stress test (100 boards, Stockfish vs. Stockfish, 300 games at 20 ms, 8 GB Docker VM) used all the memory. Only 43 of 300 games ended normally (120 failed to start, 124 lost on time because the engine hung, 13 crashes).
+    - The clock starts when the borrowed process gets `go` (the `started` callback in `MoveRequest`), not while the game waits for a free process.
+    - A process that crashes or hangs is replaced, and that game counts as a loss for the engine. If replacement fails 3 times in a row, or the engine can't start at all, the match stops with an error instead of piling up losses.
+    - The tally counts how games ended (`ends`), and the UI shows the failures (crash, time, illegal move) in red.
+  - **Single game:** Games = 1 opens that game on the big board right away (engine A has White) and hides "← All boards".
   - Colors swap every game. There is no opening book (the user chose this): every game starts from the start position.
 - **Grid:** one `<canvas>` per board. A board redraws only when its position changes, in one `requestAnimationFrame` pass with the device pixel ratio capped at 2. Boards always form one full rectangle: the column count divides the board count (100 → 10×10, 200 → 20×10), packed with 2–3 px gaps in one framed box, sized to fit the screen (minimum 40 px, then it scrolls).
   - A finished game tints the board in the winner's color. When the next game starts, the old result flashes.

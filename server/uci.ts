@@ -96,7 +96,8 @@ export class UciEngine {
    * Search the position and return the best move. Rejects if the engine doesn't
    * answer within `hardLimitMs`; the caller decides what that means (usually a loss).
    */
-  async go(startFen: string, moves: string[], limits: GoLimits, hardLimitMs: number): Promise<{ move: string; info: SearchInfo }> {
+  async go(startFen: string, moves: string[], limits: GoLimits, hardLimitMs: number, started?: () => void): Promise<{ move: string; info: SearchInfo }> {
+    started?.();
     this.info = {};
     const pos = startFen === 'startpos' ? 'startpos' : `fen ${startFen}`;
     this.send(`position ${pos}${moves.length ? ` moves ${moves.join(' ')}` : ''}`);

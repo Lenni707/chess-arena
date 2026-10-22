@@ -6,7 +6,7 @@ import { on, store } from '../store';
 import { conn } from '../ws';
 import { chips, enginesSection, engineSelect, strengthSelect } from './engines';
 
-const GAMES = [100, 1000, 5000, 10000].map((n) => ({ label: n.toLocaleString('en'), value: n }));
+const GAMES = [1, 100, 1000, 5000, 10000].map((n) => ({ label: n.toLocaleString('en'), value: n }));
 const TIME: { label: string; value: TimeControl }[] = [
   { label: '20 ms', value: { kind: 'movetime', ms: 20 } },
   { label: '100 ms', value: { kind: 'movetime', ms: 100 } },
@@ -42,7 +42,7 @@ export function matchView(): { el: HTMLElement; onKey: (e: KeyboardEvent) => voi
   const engineB = engineSelect('Engine B');
   const strengthA = strengthSelect(engineA, 'Engine A strength');
   const strengthB = strengthSelect(engineB, 'Engine B strength');
-  const games = chips(GAMES, 1);
+  const games = chips(GAMES, 2, () => idleLabel());
   const time = chips(TIME, 0);
   const boards = chips(BOARDS, 2);
   const showBoards = chips(
@@ -93,6 +93,7 @@ export function matchView(): { el: HTMLElement; onKey: (e: KeyboardEvent) => voi
   }, 'Start match');
 
   const score = scoreCard();
+  const poolNote = h('p.pool-note');
   const panel = h(
     'aside.panel',
     {},
@@ -105,6 +106,7 @@ export function matchView(): { el: HTMLElement; onKey: (e: KeyboardEvent) => voi
       h('div.field', {}, h('span', {}, 'Live boards'), showBoards.el),
       h('div.actions', {}, start),
       error,
+      poolNote,
     ),
     score.el,
     enginesSection(),
@@ -124,6 +126,12 @@ export function matchView(): { el: HTMLElement; onKey: (e: KeyboardEvent) => voi
   const movesCard = h('section.moves-card', { hidden: true }, view.movesEl, view.navEl);
   panel.insertBefore(movesCard, score.el.nextSibling);
   let watched: number | null = null;
+  let matchId = '';
+  /** A one-game match: shown straight on the big board, without the grid. */
+  const single = () => store.match?.games === 1;
+  const idleLabel = () => {
+    if (!store.match?.running) start.textContent = games.get() === 1 ? 'Start game' : 'Start match';
+  };
 
   const stage = h('div.stage.grid-stage');
   const el = h('div.play.match-view', {}, stage, panel);
@@ -147,9 +155,14 @@ export function matchView(): { el: HTMLElement; onKey: (e: KeyboardEvent) => voi
     score.el.hidden = mode === 'empty' || mode === 'summary';
     bigScore.el.hidden = false;
     grid.setActive(mode === 'grid');
+    back.hidden = single();
     if (mode === 'watch') {
       const b = m!.boards[watched!];
-      watchTitle.textContent = b && b.game >= 0 ? `Board ${b.slot + 1} · game ${b.game + 1} of ${m!.games.toLocaleString('en')}` : `Board ${watched! + 1}`;
+      watchTitle.textContent = single()
+        ? `Single game · ${m!.engineA.name} has White`
+        : b && b.game >= 0
+          ? `Board ${b.slot + 1} · game ${b.game + 1} of ${m!.games.toLocaleString('en')}`
+          : `Board ${watched! + 1}`;
     }
   }
 
@@ -159,20 +172,34 @@ export function matchView(): { el: HTMLElement; onKey: (e: KeyboardEvent) => voi
     render();
   });
 
+  const showError = () => {
+    const err = store.match?.error;
+    if (err) error.textContent = `Match stopped: ${err}`;
+  };
   const sync = () => {
     const m = store.match;
+    showError();
+    poolNote.textContent = m && !single() ? `${m.boards.length} games on screen · up to ${m.poolSize * 2} moves calculated at once (one per CPU core)` : '';
     start.textContent = m?.running ? 'Stop' : 'Start match';
     start.classList.toggle('stop', !!m?.running);
+    idleLabel();
     score.update();
     bigScore.update();
     grid.setBoards(m?.boards ?? []);
-    if (watched !== null && (!m || watched >= m.boards.length)) watch(null);
+    if (m && m.id !== matchId) {
+      // A new match: a single game opens on the big board, otherwise show the grid.
+      matchId = m.id;
+      if (single()) watch(0);
+      else if (watched !== null) watch(null);
+    } else if (watched !== null && (!m || watched >= m.boards.length)) watch(null);
     render();
   };
   on('match', sync);
   on('match.tick', (changed: MatchBoard[]) => {
+    showError();
     start.textContent = store.match?.running ? 'Stop' : 'Start match';
     start.classList.toggle('stop', !!store.match?.running);
+    idleLabel();
     score.update();
     bigScore.update();
     grid.update(changed);
@@ -184,7 +211,9 @@ export function matchView(): { el: HTMLElement; onKey: (e: KeyboardEvent) => voi
   const onKey = (e: KeyboardEvent) => {
     if (watched === null || e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
     const cur = view.ply ?? (view.game?.moves.length ?? 0);
-    if (e.key === 'Escape') watch(null);
+    if (e.key === 'Escape') {
+      if (!single()) watch(null);
+    }
     else if (e.key === 'ArrowLeft') view.go(cur - 1);
     else if (e.key === 'ArrowRight') view.go(cur + 1);
     else if (e.key === 'ArrowUp' || e.key === 'Home') view.go(0);
@@ -207,6 +236,7 @@ function scoreCard() {
   const barD = h('i.d');
   const barB = h('i.b');
   const stats = h('p.sc-stats');
+  const ends = h('p.sc-ends');
   const el = h(
     'section.score',
     { hidden: true },
@@ -215,6 +245,7 @@ function scoreCard() {
     h('div.sc-labels', {}, h('span', {}, 'A wins'), h('span', {}, 'draws'), h('span', {}, 'B wins')),
     h('div.sc-bar', {}, barA, barD, barB),
     stats,
+    ends,
   );
   const update = () => {
     const m = store.match;
@@ -230,9 +261,16 @@ function scoreCard() {
     barD.style.width = pct(t.draws);
     barB.style.width = pct(t.bWins);
     stats.textContent = statsLine(t, m.running);
+    // How games ended; engine failures (crash, illegal move, losing on time) stand out.
+    const entries = Object.entries(t.ends).sort((x, y) => y[1] - x[1]);
+    ends.replaceChildren(
+      ...entries.map(([kind, n]) => h(`span.sc-end${FAILURES.has(kind) ? '.bad' : ''}`, {}, `${kind} ${n}`)),
+    );
   };
   return { el, update };
 }
+
+const FAILURES = new Set(['crash', 'illegal move', 'time', 'failed to start']);
 
 function statsLine(t: Tally, running: boolean) {
   const state = running ? '' : t.done < t.total ? ' · stopped' : ' · finished';
