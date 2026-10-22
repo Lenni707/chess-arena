@@ -29,13 +29,14 @@ Engines that can play at a set Elo (UCI options `UCI_LimitStrength` + `UCI_Elo`,
 Open **Match** in the top bar, then pick engine A and engine B. Pick **1** under Games to watch a single engine-vs-engine game on the big board (engine A has White). By default, that's the newest version against the one before it. Then choose:
 - the number of games (1, 100, 1,000, 5,000, 10,000, or any number in **Custom**)
 - the time per move: 20 ms, 100 ms, 1 s, 10+0.1, or **∞**. ∞ means no clock: each engine searches as deep as it wants. Engines with their own fixed depth use it; Stockfish stops at depth 16, about a second per move.
-- how many boards play at once (16 to 200)
+- how many games play at once: **1 · back to back** plays them one after another on the big board, or 16 to 200 at the same time
 
 A match runs any number of games on screen, but each engine only gets one process per two CPU cores. Games share those processes move by move, so 100 boards don't need 200 engine processes. Memory stays bounded, and every move is calculated with a full CPU core. A game's clock only runs while its engine is actually thinking.
 
 Every running game is a live mini board. A board flashes the result in A's color (amber), B's color (blue) or grey for a draw, then starts its next game. Colors swap every game. The panel shows A wins / draws / B wins, A's score and the Elo difference with a 95% margin.
 
 - **Live boards: Hide** turns off the grid and shows only the big score, which is lighter when running thousands of games.
+- **PGN:** the **PGN** button under the big board downloads the game shown there as a `.pgn` file for analysis software (Lichess analysis, ChessBase, Scid, …). It works for single games, back-to-back games, a board you're watching, and your own games in Play. Each engine move carries its evaluation as `[%eval …]`.
 - **Click any small board** to watch that game large, with clocks, eval and move list. ← → step through its moves. **← All boards** or Esc goes back. The big board follows that board, so when its game ends it continues with that board's next game.
 
 Every game starts from the normal starting position. An engine that always plays the same move in the same position plays the same game every time.

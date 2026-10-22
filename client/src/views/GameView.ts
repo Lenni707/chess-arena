@@ -4,6 +4,7 @@ import { Board } from '../board/Board';
 import { Position } from '../chess';
 import { fmtClock, h } from '../dom';
 import { sound } from '../sound';
+import { downloadPgn } from '../pgn';
 
 export interface GameViewOptions {
   onMove?: (uci: string) => void;
@@ -65,6 +66,7 @@ export class GameView {
       btn('Next move', '▶', () => this.go((this.ply ?? this.fens.length - 1) + 1)),
       btn('Last move', '⏭', () => this.go(null)),
       btn('Flip board (F)', '⇅', () => this.flip()),
+      h('button.icon-btn.pgn-btn', { 'aria-label': 'Download PGN', title: 'Download the game as PGN (for analysis software)', onclick: () => this.game && downloadPgn(this.game) }, 'PGN'),
     );
     this.timer = window.setInterval(() => this.renderClocks(), 100);
   }

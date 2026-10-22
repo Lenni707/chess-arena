@@ -53,6 +53,11 @@ export interface GameState {
   clock: { w: number; b: number; running: Color | null; tc: TimeControl };
   result: Result;
   reason?: string;
+  /** When the game started (ms since epoch). */
+  startedAt: number;
+  /** For match games: the match ("A vs B") and the game number (1-based). */
+  event?: string;
+  round?: number;
 }
 
 /** One board of the live grid: a parallel game slot and the game it plays now. */

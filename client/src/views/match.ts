@@ -19,7 +19,10 @@ const TIME: { label: string; value: TimeControl }[] = [
   { label: '10 + 0.1', value: { kind: 'clock', baseMs: 10_000, incMs: 100 } },
   { label: '∞', value: { kind: 'depth', depth: NO_LIMIT_DEPTH } },
 ];
-const BOARDS = [16, 64, 100, 200].map((n) => ({ label: String(n), value: n }));
+const BOARDS = [
+  { label: '1 · back to back', value: 1 },
+  ...[16, 64, 100, 200].map((n) => ({ label: String(n), value: n })),
+];
 
 const LIGHT = '#dcd8cc';
 const DARK = '#7d8ba0';
@@ -68,7 +71,7 @@ export function matchView(): { el: HTMLElement; onKey: (e: KeyboardEvent) => voi
     { hidden: true },
     `No clock: each engine searches as deep as it wants. Engines that need a limit, like Stockfish, stop at depth ${NO_LIMIT_DEPTH} (about a second per move).`,
   );
-  const boards = chips(BOARDS, 2);
+  const boards = chips(BOARDS, 3);
   const showBoards = chips(
     [
       { label: 'Show', value: true },
@@ -126,7 +129,7 @@ export function matchView(): { el: HTMLElement; onKey: (e: KeyboardEvent) => voi
       h('div.field', {}, h('span.b-label', {}, 'Engine B'), h('div.engine-pick', {}, engineB, strengthB.el)),
       h('div.field', {}, h('span', {}, 'Games'), h('div.games-pick', {}, games.el, customGames)),
       h('div.field', {}, h('span', {}, 'Time per move'), time.el, timeHint),
-      h('div.field', {}, h('span', {}, 'Boards at once'), boards.el),
+      h('div.field', {}, h('span', {}, 'Games at once'), boards.el),
       h('div.field', {}, h('span', {}, 'Live boards'), showBoards.el),
       h('div.actions', {}, start),
       error,
@@ -151,8 +154,8 @@ export function matchView(): { el: HTMLElement; onKey: (e: KeyboardEvent) => voi
   panel.insertBefore(movesCard, score.el.nextSibling);
   let watched: number | null = null;
   let matchId = '';
-  /** A one-game match: shown straight on the big board, without the grid. */
-  const single = () => store.match?.games === 1;
+  /** One game at a time (a single game, or back to back): shown on the big board, without the grid. */
+  const single = () => store.match?.boards.length === 1;
   const idleLabel = () => {
     if (!store.match?.running) start.textContent = gameCount() === 1 ? 'Start game' : 'Start match';
   };
@@ -183,7 +186,9 @@ export function matchView(): { el: HTMLElement; onKey: (e: KeyboardEvent) => voi
     if (mode === 'watch') {
       const b = m!.boards[watched!];
       watchTitle.textContent = single()
-        ? `Single game · ${m!.engineA.name} has White`
+        ? m!.games === 1
+          ? `Single game · ${m!.engineA.name} has White`
+          : `Back to back · game ${Math.max(1, b.game + 1)} of ${m!.games.toLocaleString('en')} · colors swap every game`
         : b && b.game >= 0
           ? `Board ${b.slot + 1} · game ${b.game + 1} of ${m!.games.toLocaleString('en')}`
           : `Board ${watched! + 1}`;

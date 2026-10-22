@@ -59,7 +59,8 @@ export class Match {
     const slots = Math.max(1, Math.min(opts.concurrency, opts.games));
     this.boards = Array.from({ length: slots }, (_, slot) => ({ slot, game: -1, fen: START_FEN, lm: '', aWhite: true, result: '*', last: '*', lastAWhite: true }));
     this.current = this.boards.map(() => null);
-    this.poolSize = opts.poolSize ?? Math.max(1, Math.floor(os.cpus().length / 2));
+    // More processes than games at once would just sit idle (e.g. back to back: one each).
+    this.poolSize = opts.poolSize ?? Math.max(1, Math.min(this.boards.length, Math.floor(os.cpus().length / 2)));
     this.tally = { aWins: 0, bWins: 0, draws: 0, done: 0, total: opts.games, ends: {} };
     this.timer = setInterval(() => this.flush(), TICK_MS);
   }
@@ -133,6 +134,7 @@ export class Match {
         this.dirty.add(board.slot);
         this.onGameUpdate(board.slot, g);
       });
+      game.meta = { event: `${this.opts.engineA.name} vs ${this.opts.engineB.name}`, round: i + 1 };
       this.current[board.slot] = game;
       this.live.add(game);
       await game.run();

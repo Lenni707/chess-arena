@@ -656,6 +656,12 @@ select {
   font-size: 13px;
 }
 
+.icon-btn.pgn-btn {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
 .games-pick {
   display: flex;
   flex-wrap: wrap;
@@ -883,6 +889,12 @@ input.custom-games:not(:placeholder-shown) {
 .score.big .sc-ends {
   justify-content: center;
   font-size: 13px;
+}
+
+.icon-btn.pgn-btn {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
 }
 
 .games-pick {

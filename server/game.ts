@@ -98,6 +98,9 @@ export class Game {
   readonly uci: string[] = [];
   result: Result = '*';
   reason?: string;
+  readonly startedAt = Date.now();
+  /** Shown in exported PGN: the match name and the game number in it. */
+  meta: { event?: string; round?: number } = {};
   private clock: { w: number; b: number };
   private turnStart = 0;
   private running: Color | null = null;
@@ -135,6 +138,8 @@ export class Game {
       clock: { ...clock, running: this.running, tc: this.tc },
       result: this.result,
       reason: this.reason,
+      startedAt: this.startedAt,
+      ...this.meta,
     };
   }
 
