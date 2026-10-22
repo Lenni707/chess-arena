@@ -43,15 +43,23 @@ export function toPgn(g: GameState): string {
   return `${header}\n\n${wrap(tokens)}\n`;
 }
 
-/** Save the game as a .pgn file. */
-export function downloadPgn(g: GameState) {
-  const name = `${g.white.name} vs ${g.black.name}${g.round ? ` game ${g.round}` : ''}`.replace(/[^\w.+() -]/g, '_');
-  const url = URL.createObjectURL(new Blob([toPgn(g)], { type: 'application/x-chess-pgn' }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `${name}.pgn`;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
+/** Copy the game as PGN to the clipboard, to paste into analysis software. */
+export async function copyPgn(g: GameState) {
+  const text = toPgn(g);
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    // The clipboard API needs a secure page (localhost or https); fall back to a hidden text field.
+    const area = document.createElement('textarea');
+    area.value = text;
+    area.style.position = 'fixed';
+    area.style.opacity = '0';
+    document.body.append(area);
+    area.select();
+    const ok = document.execCommand('copy');
+    area.remove();
+    if (!ok) throw new Error('copy failed');
+  }
 }
 
 function evalComment(m: MoveRecord) {

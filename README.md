@@ -36,7 +36,7 @@ A match runs any number of games on screen, but each engine only gets one proces
 Every running game is a live mini board. A board flashes the result in A's color (amber), B's color (blue) or grey for a draw, then starts its next game. Colors swap every game. The panel shows A wins / draws / B wins, A's score and the Elo difference with a 95% margin.
 
 - **Live boards: Hide** turns off the grid and shows only the big score, which is lighter when running thousands of games.
-- **PGN:** the **PGN** button under the big board downloads the game shown there as a `.pgn` file for analysis software (Lichess analysis, ChessBase, Scid, …). It works for single games, back-to-back games, a board you're watching, and your own games in Play. Each engine move carries its evaluation as `[%eval …]`.
+- **PGN:** the **PGN** button under the big board copies the game shown there to the clipboard as PGN. Paste it into analysis software (Lichess analysis, ChessBase, Scid, …). It works for single games, back-to-back games, a board you're watching, and your own games in Play. Each engine move carries its evaluation as `[%eval …]`.
 - **Click any small board** to watch that game large, with clocks, eval and move list. ← → step through its moves. **← All boards** or Esc goes back. The big board follows that board, so when its game ends it continues with that board's next game.
 
 Every game starts from the normal starting position. An engine that always plays the same move in the same position plays the same game every time.

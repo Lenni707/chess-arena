@@ -4,7 +4,7 @@ import { Board } from '../board/Board';
 import { Position } from '../chess';
 import { fmtClock, h } from '../dom';
 import { sound } from '../sound';
-import { downloadPgn } from '../pgn';
+import { copyPgn } from '../pgn';
 
 export interface GameViewOptions {
   onMove?: (uci: string) => void;
@@ -66,9 +66,25 @@ export class GameView {
       btn('Next move', '▶', () => this.go((this.ply ?? this.fens.length - 1) + 1)),
       btn('Last move', '⏭', () => this.go(null)),
       btn('Flip board (F)', '⇅', () => this.flip()),
-      h('button.icon-btn.pgn-btn', { 'aria-label': 'Download PGN', title: 'Download the game as PGN (for analysis software)', onclick: () => this.game && downloadPgn(this.game) }, 'PGN'),
+      h('button.icon-btn.pgn-btn', { 'aria-label': 'Copy PGN', title: 'Copy the game as PGN (paste it into analysis software)', onclick: (e: Event) => this.copyPgn(e.currentTarget as HTMLButtonElement) }, 'PGN'),
     );
     this.timer = window.setInterval(() => this.renderClocks(), 100);
+  }
+
+  private async copyPgn(btn: HTMLButtonElement) {
+    if (!this.game) return;
+    let label = 'Copied';
+    try {
+      await copyPgn(this.game);
+    } catch {
+      label = 'Failed';
+    }
+    btn.textContent = label;
+    btn.classList.toggle('copied', label === 'Copied');
+    setTimeout(() => {
+      btn.textContent = 'PGN';
+      btn.classList.remove('copied');
+    }, 1500);
   }
 
   destroy() {

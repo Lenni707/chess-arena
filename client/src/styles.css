@@ -662,6 +662,11 @@ select {
   letter-spacing: 0.04em;
 }
 
+.icon-btn.pgn-btn.copied {
+  color: var(--a);
+  border-color: var(--a);
+}
+
 .games-pick {
   display: flex;
   flex-wrap: wrap;
@@ -895,6 +900,11 @@ input.custom-games:not(:placeholder-shown) {
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.04em;
+}
+
+.icon-btn.pgn-btn.copied {
+  color: var(--a);
+  border-color: var(--a);
 }
 
 .games-pick {
